@@ -150,12 +150,12 @@ net.core.somaxconn = 65535
 
 /etc/security/limit.conf [CentOS only]
 ```bash
-* soft nofile 65535 
-* hard nofile 65535 
+* soft nofile 262144
+* hard nofile 262144
 * soft nproc 131072 
 * hard nproc 131072
-[account name] * soft nofile 65535 
-[account name] * hard nofile 65535 
+[account name] * soft nofile 262144
+[account name] * hard nofile 262144
 [account name] * soft nproc 131072 
 [account name] * hard nproc 131072
 ```
