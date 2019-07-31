@@ -51,12 +51,11 @@ v1.1.13 이후 버전은 기본 라이센스 기간이 7일로 제한되며, 추
 
 ```
 
-개발 환경
+Centos Linux Installation Guide
 ==============================================================================
 
-필수 설치 항목
+Installing Prerequisites
 -------------------
-FlashBase는 CentOS와 MAC에서 개발 가능하면, 환경설정이 다른 경우는 '[CentOS only]' 또는 '[MAC only]'로 표기함.
 
 - Oracla JDK 1.8
 - bash
@@ -69,13 +68,11 @@ ssh-keygen -t rsa
 chmod 0600 ~/.ssh/authorized_keys
 cat .ssh/id_rsa.pub | ssh localhost "cat >> .ssh/authorized_keys"
 
-** mac에서는 '시스템 환경설정/공유'에서 '원격 로그인'을 활성화시켜야 함 
 ```
 
-- Intel MKL library 설치
-``` console
-docs에 있는 intel-mkl-2019-library-install.md 참고
-```
+
+
+### Ruby and redis ruby module install
 - Ruby 1.x 이상 
 - Ruby module : redis (3.3.0 이상) 
 - rubygem : 모듈 설치를 위함 
@@ -205,12 +202,16 @@ net.core.somaxconn = 65535
 </code></pre>
 
 /etc/security/limit.conf [CentOS only]
-<pre><code>* soft nofile 65535 
+```bash
+* soft nofile 65535 
 * hard nofile 65535 
 * soft nproc 131072 
 * hard nproc 131072
-</code></pre>
-
+[account name] * soft nofile 65535 
+[account name] * hard nofile 65535 
+[account name] * soft nproc 131072 
+[account name] * hard nproc 131072
+```
 Remove SWAP Partition [CentOS only]
 > FlashBase를 구동할 서버는 /etc/fstab 파일에서 SWAP partition 부분을 comment 처리 후 재시작 합니다.
 <pre><code># /etc/fstab
@@ -230,22 +231,156 @@ Remove SWAP Partition [CentOS only]
 > 재시작이 불가능할 경우 아래 명령으로 swap partition의 mount를 해제 합니다. (swap을 사용중일 경우 시간이 오래 소요됩니다.)
 <pre><code>swapoff -a</code></pre>
 
-'.bashrc' or '.bash_profile'
-<pre><code> export SPARK_HOME=$HOME/spark
-export HADOOP_HOME=$HOME/hadoop
-export SR2_HOME=$HOME/tsr2/cluster_1/tsr2-assembly-1.0.0-SNAPSHOT
-export TSR2_HOME=$HOME/tsr2/cluster_1/tsr2-assembly-1.0.0-SNAPSHOT
-export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
-export SPARK_LOCAL_IP=127.0.0.1
-export HADOOP_COMMON_LIB_NATIVE_DIR=/Users/admin/hadoop/lib/native
-export HADOOP_OPTS="${HADOOP_OPTS} -Djava.library.path=/Users/admin/hadoop/lib"
-export export MAVEN_OPTS="-Xmx512M"
+Session configuration files
 
-export PATH=${PATH}:${JAVA_HOME}/bin::$HOME/sbin:${TSR2_HOME}/sbin:$HOME/sbin:${TSR2_HOME}/sbin/nvkvs-test:${SPARK_HOME}/sbin:${SPARK_HOME}/bin:${HADOOP_HOME}/sbin:${HADOOP_HOME}/bin:/usr/bin
+.bashrc
+```bash
+# .bashrc
 
-</code></pre>
+if [ -f /etc/bashrc ]; then
+. /etc/bashrc
+fi
 
-FlashBase 설치하기
+# User specific environment and startup programs
+
+PATH=$PATH:$HOME/.local/bin:$HOME/bin
+
+HADOOP_HOME=/home/nvkvs/hadoop
+HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+YARN_CONF_DIR=$HADOOP_HOME/etc/hadoop
+SPARK_HOME=/home/nvkvs/spark
+
+PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$SPARK_HOME/bin:$SPARK_HOME/sbin:$HOME/sbin
+
+export PATH SPARK_HOME HADOOP_HOME HADOOP_CONF_DIR YARN_CONF_DIR
+alias cfc='source ~/.use_cluster'
+```
+
+.use_cluster
+```bash
+#!/bin/bash
+
+## set cluster-#{NUM} path
+export PATH="/bin/:/sbin/:/usr/local/bin/:/usr/local/sbin"
+export SR2_HOME=${HOME}/tsr2/cluster_$1/tsr2-assembly-1.0.0-SNAPSHOT
+
+source ${HOME}/.bash_profile
+
+echo $PATH | grep ${SR2_HOME} > /dev/null
+RET=$?
+if [[ $RET -eq 1 ]]; then
+    PATH=$PATH:$SR2_HOME/bin:$SR2_HOME/sbin
+fi
+
+## source command auto-complate
+source $SR2_HOME/sbin/tsr2-helper
+
+if [ "$#" -le "1" ]; then
+    return 0
+else
+	shift
+    "$@"
+	return $?
+fi
+```
+
+Other system configuration
+===========================
+```bash
+root@fbg01 ~]# cat /etc/init.d/disable-transparent-hugepages
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          disable-transparent-hugepages
+# Required-Start:    $local_fs
+# Required-Stop:
+# X-Start-Before:    mongod mongodb-mms-automation-agent
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Disable Linux transparent huge pages
+# Description:       Disable Linux transparent huge pages, to improve
+#                    database performance.
+### END INIT INFO
+ 
+case $1 in
+  start)
+    if [ -d /sys/kernel/mm/transparent_hugepage ]; then
+      thp_path=/sys/kernel/mm/transparent_hugepage
+    elif [ -d /sys/kernel/mm/redhat_transparent_hugepage ]; then
+      thp_path=/sys/kernel/mm/redhat_transparent_hugepage
+    else
+      return 0
+    fi
+ 
+    echo 'never' > ${thp_path}/enabled
+    echo 'never' > ${thp_path}/defrag
+ 
+    re='^[0-1]+$'
+    if [[ $(cat ${thp_path}/khugepaged/defrag) =~ $re ]]
+    then
+      # RHEL 7
+      echo 0  > ${thp_path}/khugepaged/defrag
+    else
+      # RHEL 6
+      echo 'no' > ${thp_path}/khugepaged/defrag
+    fi
+ 
+    unset re
+    unset thp_path
+    ;;
+esac
+[root@fbg01 ~]# chmod 755 /etc/init.d/disable-transparent-hugepages
+[root@fbg01 ~]# chkconfig --add disable-transparent-hugepages
+```
+
+
+### Intel MKL library
+``` console
+docs에 있는 intel-mkl-2019-library-install.md 참고
+```
+
+#### (1) Intel MKL 2019 library install
+
+- go to the website: https://software.intel.com/en-us/mkl/choose-download/macos
+- register and login
+- select product named "Intel * Math Kernel Library for Linux" or "Intel * Math Kernel Library for Mac" from the select box "Choose Product to Download"
+- Choose a Version "2019 Update 2" and download
+- unzip the file and execute the install.sh file with root account or (sudo command)
+``` console
+    sudo ./install.sh
+```
+- choose custom install and configure the install directory /opt/intel (with sudo, /opt/intel is the default installation path, just confirm it)
+``` console
+matthew@fbg05 /opt/intel $ pwd
+/opt/intel
+matthew@fbg05 /opt/intel $ ls -alh
+합계 0
+drwxr-xr-x  10 root root 307  3월 22 01:34 .
+drwxr-xr-x.  5 root root  83  3월 22 01:34 ..
+drwxr-xr-x   6 root root  72  3월 22 01:35 .pset
+drwxr-xr-x   2 root root  53  3월 22 01:34 bin
+lrwxrwxrwx   1 root root  28  3월 22 01:34 compilers_and_libraries -> compilers_and_libraries_2019
+drwxr-xr-x   3 root root  19  3월 22 01:34 compilers_and_libraries_2019
+drwxr-xr-x   4 root root  36  1월 24 23:04 compilers_and_libraries_2019.2.187
+drwxr-xr-x   6 root root  63  1월 24 22:50 conda_channel
+drwxr-xr-x   4 root root  26  1월 24 23:01 documentation_2019
+lrwxrwxrwx   1 root root  33  3월 22 01:34 lib -> compilers_and_libraries/linux/lib
+lrwxrwxrwx   1 root root  33  3월 22 01:34 mkl -> compilers_and_libraries/linux/mkl
+lrwxrwxrwx   1 root root  29  3월 22 01:34 parallel_studio_xe_2019 -> parallel_studio_xe_2019.2.057
+drwxr-xr-x   5 root root 216  3월 22 01:34 parallel_studio_xe_2019.2.057
+drwxr-xr-x   3 root root  16  3월 22 01:34 samples_2019
+lrwxrwxrwx   1 root root  33  3월 22 01:34 tbb -> compilers_and_libraries/linux/tbb
+```
+
+
+#### (2) Intel MKL 2019 library environment settings
+
+- append the following statement into ~/.bashrc
+```console
+# INTEL MKL enviroment variables for ($MKLROOT, can be checked with the value export | grep MKL)
+source /opt/intel/mkl/bin/mklvars.sh intel64
+```
+
+FlashBase Install
 =================
 
 deploy directory를 생성한다.
