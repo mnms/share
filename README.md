@@ -16,7 +16,7 @@ mvn compiler:compile
 ```
 
 
-### For linujx
+### For Linux
 - Oracla JDK 1.8
 - bash
 - gcc 4.8.5 이상 
@@ -136,6 +136,49 @@ sudo make install
 
 brew link --force gettext
 
+```
+### Intel MKL library
+
+#### (1) Intel MKL 2019 library install
+
+- go to the website: https://software.intel.com/en-us/mkl/choose-download/macos
+- register and login
+- select product named "Intel * Math Kernel Library for Linux" or "Intel * Math Kernel Library for Mac" from the select box "Choose Product to Download"
+- Choose a Version "2019 Update 2" and download
+- unzip the file and execute the install.sh file with root account or (sudo command)
+``` console
+    sudo ./install.sh
+```
+- choose custom install and configure the install directory /opt/intel (with sudo, /opt/intel is the default installation path, just confirm it)
+``` console
+matthew@fbg05 /opt/intel $ pwd
+/opt/intel
+matthew@fbg05 /opt/intel $ ls -alh
+합계 0
+drwxr-xr-x  10 root root 307  3월 22 01:34 .
+drwxr-xr-x.  5 root root  83  3월 22 01:34 ..
+drwxr-xr-x   6 root root  72  3월 22 01:35 .pset
+drwxr-xr-x   2 root root  53  3월 22 01:34 bin
+lrwxrwxrwx   1 root root  28  3월 22 01:34 compilers_and_libraries -> compilers_and_libraries_2019
+drwxr-xr-x   3 root root  19  3월 22 01:34 compilers_and_libraries_2019
+drwxr-xr-x   4 root root  36  1월 24 23:04 compilers_and_libraries_2019.2.187
+drwxr-xr-x   6 root root  63  1월 24 22:50 conda_channel
+drwxr-xr-x   4 root root  26  1월 24 23:01 documentation_2019
+lrwxrwxrwx   1 root root  33  3월 22 01:34 lib -> compilers_and_libraries/linux/lib
+lrwxrwxrwx   1 root root  33  3월 22 01:34 mkl -> compilers_and_libraries/linux/mkl
+lrwxrwxrwx   1 root root  29  3월 22 01:34 parallel_studio_xe_2019 -> parallel_studio_xe_2019.2.057
+drwxr-xr-x   5 root root 216  3월 22 01:34 parallel_studio_xe_2019.2.057
+drwxr-xr-x   3 root root  16  3월 22 01:34 samples_2019
+lrwxrwxrwx   1 root root  33  3월 22 01:34 tbb -> compilers_and_libraries/linux/tbb
+```
+
+
+#### (2) Intel MKL 2019 library environment settings
+
+- append the following statement into ~/.bashrc
+```console
+# INTEL MKL enviroment variables for ($MKLROOT, can be checked with the value export | grep MKL)
+source /opt/intel/mkl/bin/mklvars.sh intel64
 ```
 
 - apache hadoop 2.6 이상(정상 작동을 확인한 버전은 2.6.0 입니다.)
@@ -296,52 +339,6 @@ esac
 ```
 
 
-### Intel MKL library
-``` console
-docs에 있는 intel-mkl-2019-library-install.md 참고
-```
-
-#### (1) Intel MKL 2019 library install
-
-- go to the website: https://software.intel.com/en-us/mkl/choose-download/macos
-- register and login
-- select product named "Intel * Math Kernel Library for Linux" or "Intel * Math Kernel Library for Mac" from the select box "Choose Product to Download"
-- Choose a Version "2019 Update 2" and download
-- unzip the file and execute the install.sh file with root account or (sudo command)
-``` console
-    sudo ./install.sh
-```
-- choose custom install and configure the install directory /opt/intel (with sudo, /opt/intel is the default installation path, just confirm it)
-``` console
-matthew@fbg05 /opt/intel $ pwd
-/opt/intel
-matthew@fbg05 /opt/intel $ ls -alh
-합계 0
-drwxr-xr-x  10 root root 307  3월 22 01:34 .
-drwxr-xr-x.  5 root root  83  3월 22 01:34 ..
-drwxr-xr-x   6 root root  72  3월 22 01:35 .pset
-drwxr-xr-x   2 root root  53  3월 22 01:34 bin
-lrwxrwxrwx   1 root root  28  3월 22 01:34 compilers_and_libraries -> compilers_and_libraries_2019
-drwxr-xr-x   3 root root  19  3월 22 01:34 compilers_and_libraries_2019
-drwxr-xr-x   4 root root  36  1월 24 23:04 compilers_and_libraries_2019.2.187
-drwxr-xr-x   6 root root  63  1월 24 22:50 conda_channel
-drwxr-xr-x   4 root root  26  1월 24 23:01 documentation_2019
-lrwxrwxrwx   1 root root  33  3월 22 01:34 lib -> compilers_and_libraries/linux/lib
-lrwxrwxrwx   1 root root  33  3월 22 01:34 mkl -> compilers_and_libraries/linux/mkl
-lrwxrwxrwx   1 root root  29  3월 22 01:34 parallel_studio_xe_2019 -> parallel_studio_xe_2019.2.057
-drwxr-xr-x   5 root root 216  3월 22 01:34 parallel_studio_xe_2019.2.057
-drwxr-xr-x   3 root root  16  3월 22 01:34 samples_2019
-lrwxrwxrwx   1 root root  33  3월 22 01:34 tbb -> compilers_and_libraries/linux/tbb
-```
-
-
-#### (2) Intel MKL 2019 library environment settings
-
-- append the following statement into ~/.bashrc
-```console
-# INTEL MKL enviroment variables for ($MKLROOT, can be checked with the value export | grep MKL)
-source /opt/intel/mkl/bin/mklvars.sh intel64
-```
 
 FlashBase Install
 =================
