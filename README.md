@@ -1,24 +1,40 @@
-Centos Linux Installation Guide
+Installation Guide
 ==============================================================================
 
 Installing Prerequisites
 -------------------
 
+### For Mac osx
+- java 1.8  
+- xcode gcc 사용 (xcode 9.0 이상)
+-  xcode-select --install
+
+``` console
+brew install maven automake libtool pkg-config sshd boost
+gem install redis
+mvn compiler:compile
+```
+
+
+### For linujx
 - Oracla JDK 1.8
 - bash
 - gcc 4.8.5 이상 
 - glibc 2.17 이상 (CentOS 7.2 이후 버전은 기본적으로 2.17 이상이 설치되어 있습니다.)
 - unzip
 - ssh 
+
+``` console
+yum -y install vim ruby unzip
+sudo yum udpate
+sudo yum install epel-release
+sudo yum install boost boost-thread boost-devel 
+```
 ``` console
 ssh-keygen -t rsa
 chmod 0600 ~/.ssh/authorized_keys
 cat .ssh/id_rsa.pub | ssh localhost "cat >> .ssh/authorized_keys"
-
 ```
-
-
-
 ### Ruby and redis ruby module install
 - Ruby 1.x 이상 
 - Ruby module : redis (3.3.0 이상) 
