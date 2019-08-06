@@ -39,6 +39,16 @@ cat .ssh/id_rsa.pub | ssh localhost "cat >> .ssh/authorized_keys"
 - Ruby 1.x 이상 
 - Ruby module : redis (3.3.0 이상) 
 - rubygem : 모듈 설치를 위함 
+
+#### Update for Centos 7 (installing gem redis module version 4.1.2 compatible with flashbase)
+``` console
+sudo yum install centos-release-scl
+sudo yum install rh-ruby23
+scl enable rh-ruby23 bash
+gem install redis
+```
+
+#### Previous method
 ``` console
 $gem install redis
 
