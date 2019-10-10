@@ -1,0 +1,35 @@
+
+# 2019-08-20 04:00:54.309220
++exit
+
+# 2019-08-20 04:14:47.782027
++SELECT sepal_length, sepal_width FROM iris WHERE sepal_length > 0;
+
+# 2019-08-20 04:14:59.945943
++SHOW tables;
+
+# 2019-08-20 04:21:35.027476
++exit
+
+# 2019-08-20 04:35:01.430540
++SELECT sepal_length, sepal_width FROM iris WHERE sepal_length > 0;
+
+# 2019-08-20 04:36:18.720987
++drop table iris;
+
+# 2019-08-20 04:36:37.400466
++table list;
+
+# 2019-08-20 04:37:16.220534
++table list
++;
+
+# 2019-08-20 04:37:22.614753
++table list;
+
+# 2019-08-20 04:37:27.736680
++c 2
++;
+
+# 2019-08-20 04:37:30.245889
++exit
