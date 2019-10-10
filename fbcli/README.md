@@ -595,7 +595,7 @@ root@flashbase:32>
 
 
 
-## Logging in fole
+## Logging in file
 
 `fbcli/logs` 아래에 debug 수준의 로그가 저장됩니다.
 
