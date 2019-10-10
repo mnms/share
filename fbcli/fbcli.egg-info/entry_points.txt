@@ -1,3 +1,0 @@
-[console_scripts]
-fbcli = fbcli.cli_main:main
-
