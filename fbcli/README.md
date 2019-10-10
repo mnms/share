@@ -1,5 +1,19 @@
 # Fbcli Guide
 
+[Installing Prerequisites](#installing-prerequisites)
+
+[Fbcli Install](#fbcli-install)
+
+[Fbcli 실행하기](#fbcli-실행하기)
+
+[Deploy](#deploy)
+
+[클러스터 생성](#클러스터-생성)
+
+[Version Update](#version-update)
+
+[Logging in file](#logging-in-file)
+
 
 
 ## Installing Prerequisites
@@ -579,3 +593,10 @@ Cluster 32 selected.
 root@flashbase:32>
 ```
 
+
+
+## Logging in fole
+
+`fbcli/logs` 아래에 debug 수준의 로그가 저장됩니다.
+
+최대 1Gi만큼 저장하며 초과하는 경우 최신순으로 rolling update가 진행됩니다.
