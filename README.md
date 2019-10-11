@@ -216,8 +216,9 @@ net.core.wmem_max = 16777216
 net.ipv4.tcp_max_syn_backlog = 4096 
 net.core.somaxconn = 65535
 </code></pre>
+> 주의) runtime  반영하려면 sudo sysctl -p 수행
 
-/etc/security/limit.conf [CentOS only]
+/etc/security/limits.conf [CentOS only]
 ```bash
 * soft nofile 262144
 * hard nofile 262144
@@ -228,6 +229,8 @@ net.core.somaxconn = 65535
 [account name] * soft nproc 131072 
 [account name] * hard nproc 131072
 ```
+> 주의) runtime 반영하려면, ulimit -n 65535, ulimit -u 131072 수행
+
 Remove SWAP Partition [CentOS only]
 > FlashBase를 구동할 서버는 /etc/fstab 파일에서 SWAP partition 부분을 comment 처리 후 재시작 합니다.
 <pre><code># /etc/fstab
