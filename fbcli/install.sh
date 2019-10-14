@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# download pip
-# pip download -r requirements.txt -d ./pip_modules
-
 set -e
 
 RED='\033[0;31m'
@@ -41,7 +38,9 @@ set_print_color ${LIGHT_BLUE}
 printf "Start to install FlashBaseCLI\n"
 set_print_color ${NO_COLOR}
 
-pip install --user -e . || err_flg=1
+dir_path=$(dirname "$0")
+
+pip install --user -e ${dir_path} || err_flg=1
 if [ ${err_flg} -eq 1 ]; then
   if [ ${trap_flg} -ne 1 ]; then
     set_print_color ${RED}
@@ -54,8 +53,8 @@ fi
 pip install \
   --user \
   --no-index \
-  --find-links="./pip_modules" \
-  -r ./requirements.txt || err_flg=1
+  --find-links="${dir_path}/pip_modules" \
+  -r "${dir_path}/requirements.txt"|| err_flg=1
 if [ ${err_flg} -eq 1 ]; then
   if [ ${trap_flg} -ne 1 ]; then
     set_print_color ${RED}
