@@ -375,6 +375,11 @@ def reset_conf_of_cli(cluster_id, backup=False):
 
 def get_cli_config():
     root_of_cli_config = get_root_of_cli_config()
+    conf_path = path_join(root_of_cli_config, 'config')
+    conf_exist = os.path.exists(conf_path)
+    if not conf_exist:
+        with open(conf_path, 'w') as fd:
+            fd.writelines("base_directory:")
     with open(path_join(root_of_cli_config, 'config'), 'r') as f:
         cli_config = yaml.load(f)
     return cli_config

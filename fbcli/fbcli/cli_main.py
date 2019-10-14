@@ -78,7 +78,7 @@ def run_monitor():
     ssh_execute_async(client=client, command=command)
 
 
-def run_deploy(cluster_id=None, save=True, force=False):
+def run_deploy(cluster_id=None, history_save=True, force=False):
     # validate cluster id
     if cluster_id is None:
         cluster_id = get_cur_cluster_id()
@@ -110,6 +110,11 @@ def run_deploy(cluster_id=None, save=True, force=False):
     conf_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, current_time)
     meta = [['NAME', 'VALUE']]
     local_ip = config.get_local_ip()
+    backup_nodes = []
+    if not first:
+        props_path = config.get_path_of_fb(cluster_id)['redis_properties']
+        key = 'sr2_redis_master_hosts'
+        backup_nodes = config.get_props(props_path, key, [])
 
     # notice re-deploy
     if not first:
@@ -124,38 +129,32 @@ def run_deploy(cluster_id=None, save=True, force=False):
         if not yes:
             logger.info('Cancel deploy.')
             return
-        logger.debug('delete cluster conf on cli')
-        p = config.get_path_of_cli(cluster_id)
-        p = path_join(p['cluster_path'], 'config.yaml')
-        if os.path.isdir(p):
-            shutil.rmtree(p)
 
+    # ask info
     installer_path = ask_util.installer()
     meta.append(['installer', os.path.basename(installer_path)])
 
-    nodes = []
-    if first:
-        nodes = ask_util.nodes(save)
-    else:
-        props_path = config.get_path_of_fb(cluster_id)['redis_properties']
-        key = 'sr2_redis_master_hosts'
-        nodes = config.get_props(props_path, key, [])
+    nodes = ask_util.nodes(save=save, default=backup_nodes)
+    meta.append(['nodes', '\n'.join(nodes)])
     if not nodes:
         logger.error('Nodes cannot empty')
         return
-    meta.append(['nodes', '\n'.join(nodes)])
 
     if not first:
         restore_yes = askBool('Do you want to restore conf?', ['y', 'n'])
         meta.append(['restore', restore_yes])
 
-    if first:
+    if not restore_yes:
         m_ports, result = ask_util.master_ports(cluster_id)
         meta.append(['master ports', result])
         replicas = ask_util.replicas()
         if replicas > 0:
             m_count = len(m_ports)
-            s_ports, result = ask_util.slave_ports(cluster_id, m_count, replicas)
+            s_ports, result = ask_util.slave_ports(
+                cluster_id,
+                m_count,
+                replicas
+            )
             meta.append(['slave ports', result])
         ssd_count = ask_util.ssd_count(save=save)
         meta.append(['ssd count', ssd_count])
@@ -179,6 +178,10 @@ def run_deploy(cluster_id=None, save=True, force=False):
 
     # check node status
     logger.info('Check status of nodes...')
+    success = Center().check_include_localhost(nodes)
+    if not success:
+        logger.error('Must include local node')
+        return
     success, msg = Center().check_node_connection(nodes, True)
     logger.debug(msg)
     if not success:
@@ -189,11 +192,8 @@ def run_deploy(cluster_id=None, save=True, force=False):
         logger.error(''.join(msg))
         return
 
-    success = Center().check_include_localhost(nodes)
-    if not success:
-        logger.error('Must include local node')
-        return
-
+    # delete legacy
+    logger.info('Delete legacy...')
     for node in nodes:
         if DeployUtil().is_pending(cluster_id, node):
             home_path = net.get_home_path(node)
@@ -207,37 +207,28 @@ def run_deploy(cluster_id=None, save=True, force=False):
             ssh_execute(client=client, command=command)
             client.close()
 
-    # check cluster exist
-    if first:
-        logger.info('Check lagacy...')
-        meta = [['NODE', 'STATUS']]
-        for node in nodes:
-            can_deploy = True
-            home_path = net.get_home_path(node)
-            path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
-            cluster_path = path_of_fb['cluster_path']
-            client = get_ssh(node)
-            if not client:
-                logger.error("ssh connection fail: '{}'".format(node))
-                return
-            if net.is_exist(client, cluster_path):
-                meta.append([node, color.red('CLUSTER EXIST')])
-                can_deploy = False
-                continue
-            meta.append([node, color.green('OK')])
-        if not can_deploy:
-            logger.error('Cluster information exists on some nodes.')
-            utils.print_table(meta)
-            if not force:
-                logger.error("If you trying to force, use option '--force'")
-                return
-
     # backup conf
     if restore_yes:
         Center().conf_backup(local_ip, cluster_id, conf_backup_dir)
 
     # backup cluster
+    logger.info('Cluster backup...')
+    for node in backup_nodes:
+        home_path = net.get_home_path(node)
+        path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
+        cluster_path = path_of_fb['cluster_path']
+        client = get_ssh(node)
+        if not client:
+            logger.warn("Connection fail: '{}'".format(node))
+            continue
+        if net.is_exist(client, cluster_path):
+            Center().cluster_backup(node, cluster_id, cluster_backup_dir)
+
+    # check cluster exist
+    logger.info('Check lagacy...')
+    meta = [['NODE', 'STATUS']]
     for node in nodes:
+        can_deploy = True
         home_path = net.get_home_path(node)
         path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
         cluster_path = path_of_fb['cluster_path']
@@ -246,11 +237,32 @@ def run_deploy(cluster_id=None, save=True, force=False):
             logger.error("ssh connection fail: '{}'".format(node))
             return
         if net.is_exist(client, cluster_path):
-            Center().cluster_backup(node, cluster_id, cluster_backup_dir)
+            meta.append([node, color.red('CLUSTER EXIST')])
+            can_deploy = False
+            continue
+        meta.append([node, color.green('OK')])
+    if not can_deploy:
+        logger.error('Cluster information exists on some nodes.')
+        utils.print_table(meta)
+        if not force:
+            logger.error("If you trying to force, use option '--force'")
+            return
+    if force:
+        for node in nodes:
+            home_path = net.get_home_path(node)
+            path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
+            cluster_path = path_of_fb['cluster_path']
+            client = get_ssh(node)
+            if not client:
+                logger.warn("Connection fail: '{}'".format(node))
+                continue
+            if net.is_exist(client, cluster_path):
+                Center().cluster_backup(node, cluster_id, cluster_backup_dir)
 
     # install
     logger.info('Transfer installer and execute...')
     for node in nodes:
+        logger.info(node)
         home_path = net.get_home_path(node)
         path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
         cluster_path = path_of_fb['cluster_path']
@@ -266,8 +278,8 @@ def run_deploy(cluster_id=None, save=True, force=False):
         DeployUtil().install(node, cluster_id, os.path.basename(installer_path))
 
     # set props
-    if first:
-        logger.info('Set up info...')
+    if not restore_yes:
+        logger.info('Set conf...')
         path_of_fb = config.get_path_of_fb(cluster_id)
         conf_path = path_of_fb['conf_path']
         props_path = path_of_fb['redis_properties']
@@ -317,7 +329,22 @@ def run_deploy(cluster_id=None, save=True, force=False):
         config.make_key_disable(props_path, key)
         config.set_props(props_path, key, prefix_of_fdbp)
 
-    conf_path = path_of_fb['conf_path']
+        conf_path = path_of_fb['conf_path']
+    else:
+        logger.info('Restore conf...')
+        Center().conf_restore(local_ip, cluster_id, conf_backup_dir)
+        path_of_fb = config.get_path_of_fb(cluster_id)
+        conf_path = path_of_fb['conf_path']
+        props_path = path_of_fb['redis_properties']
+
+        key = 'sr2_redis_master_hosts'
+        config.make_key_enable(props_path, key)
+        config.set_props(props_path, key, nodes)
+        key = 'sr2_redis_slave_hosts'
+        config.make_key_enable(props_path, key)
+        config.set_props(props_path, key, nodes)
+
+    logger.info('Sync conf...')
     for node in nodes:
         if socket.gethostbyname(node) in [local_ip, '127.0.0.1']:
             continue
@@ -327,11 +354,6 @@ def run_deploy(cluster_id=None, save=True, force=False):
             return
         net.copy_dir_to_remote(client, conf_path, conf_path)
         client.close()
-
-    # restore conf
-    if restore_yes:
-        for node in nodes:
-            Center().conf_restore(node, cluster_id, conf_backup_dir)
 
     # set deploy state complete
     for node in nodes:
@@ -345,13 +367,12 @@ def run_deploy(cluster_id=None, save=True, force=False):
         if not client:
             logger.error("ssh connection fail: '{}'".format(node))
             return
-        command = 'rm -r {}'.format(path_join(cluster_path, '.deploy.state'))
+        command = 'rm -rf {}'.format(path_join(cluster_path, '.deploy.state'))
         ssh_execute(client=client, command=command)
         client.close()
 
     logger.info('Complete to deploy cluster {}'.format(cluster_id))
     Cluster().use(cluster_id)
-    return
 
 
 def run_passwd():
@@ -413,6 +434,9 @@ def run_import_conf():
         conf['ssd']['count'] = int(ssd_count)
 
         root_of_cli_config = get_root_of_cli_config()
+        cluster_base_path = path_join(root_of_cli_config, 'clusters')
+        if not os.path.isdir(cluster_base_path):
+            os.mkdir(cluster_base_path)
         cluster_path = path_join(root_of_cli_config, 'clusters', cluster_id)
         if not os.path.isdir(cluster_path):
             os.mkdir(cluster_path)
@@ -497,7 +521,40 @@ def run_import_conf():
     _import_from_fb_to_cli_conf(rp_exists)
 
 
-def fbcli_edit():
+def run_delete(cluster_id=None):
+    if not cluster_id:
+        cluster_id = config.get_cur_cluster_id()
+    valid = cluster_util.validate_id(cluster_id)
+    if not valid:
+        logger.error('Invalid cluster id: {}'.format(cluster_id))
+        return
+    if cluster_id not in cluster_util.get_cluster_list():
+        logger.error('Cluster not exist: {}'.format(cluster_id))
+        return
+    cluster = Cluster()
+    cluster.stop(force=True, reset=True)
+    # delete cluster folder
+    cli_cluster_path = config.get_path_of_cli(cluster_id)["cluster_path"]
+
+    path_of_fb = config.get_path_of_fb(cluster_id)
+    fb_cluster_path = path_of_fb["cluster_path"]
+    props_path = path_of_fb['redis_properties']
+
+    key = 'sr2_redis_master_hosts'
+    nodes = config.get_props(props_path, key, [])
+    for node in nodes:
+        client = get_ssh(node)
+        cmd = [
+            'rm -rf {};'.format(fb_cluster_path),
+            'rm -rf {}'.format(cli_cluster_path),
+        ]
+        ssh_execute(client=client, command=' '.join(cmd))
+        client.close()
+    if config.get_cur_cluster_id() == cluster_id:
+        cluster.use(-1)
+
+
+def run_edit():
     p = path_join(config.get_root_of_cli_config(), 'config')
     editor.edit(p, syntax='yaml')
 
@@ -535,7 +592,8 @@ for automatically generating CLIs
         self.import_conf = run_import_conf
         self.sql = run_fbsql
         self.c = run_cluster_use
-        self.edit = fbcli_edit
+        self.edit = run_edit
+        self.delete = run_delete
 
 
 def _handle(text):

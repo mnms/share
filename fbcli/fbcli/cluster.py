@@ -140,31 +140,22 @@ class Cluster(object):
     def edit(self):
         """Open vim to edit config file"""
         cluster_id = config.get_cur_cluster_id()
-        path_of_cli = config.get_path_of_cli(cluster_id)
         path_of_fb = config.get_path_of_fb(cluster_id)
-        if not os.path.isdir(path_of_cli['cluster_path']):
-            logger.debug("FileNotExisted: '{}'".format(path_of_cli['cluster_path']))
-            os.mkdir(path_of_cli['cluster_path'])
-            logger.debug("CreateDir: '{}'".format(path_of_cli['cluster_path']))
-        if not os.path.isdir(path_of_cli['conf_path']):
-            logger.debug("FileNotExisted: '{}'".format(path_of_cli['conf_path']))
-            shutil.copytree(path_of_fb['conf_path'], path_of_cli['conf_path'])
-            logger.debug("CopyTree: '{}'".format(path_of_cli['cluster_path']))
+        # path_of_cli = config.get_path_of_cli(cluster_id)
+        # if not os.path.exists(path_of_cli['cluster_path']):
+        #     logger.debug(
+        #         "FileNotExisted: '{}'".format(
+        #             path_of_cli['cluster_path']))
+        #     os.system('mkdir -p {}'.format(path_of_cli['cluster_path']))
+        #     logger.debug("CreateDir: '{}'".format(path_of_cli['cluster_path']))
+        # if not os.path.exists(path_of_cli['conf_path']):
+        #     logger.debug(
+        #         "FileNotExisted: '{}'".format(
+        #             path_of_cli['conf_path']))
+        #     shutil.copytree(path_of_fb['conf_path'], path_of_cli['conf_path'])
+        #     logger.debug("CopyTree: '{}'".format(path_of_cli['cluster_path']))
         editor.edit(path_of_fb['redis_properties'], syntax='sh')
         cluster_util.rsync_fb_conf()
-    
-    def delete(self, cluster_id=None):
-        logger.warning('delete disable')
-        return
-        if not cluster_id:
-            cluster_id = config.get_cur_cluster_id()
-        valid = cluster_util.validate_id(cluster_id)
-        if not valid:
-            logger.error('Invalid cluster id: {}'.format(cluster_id))
-            return
-        self.stop(force=True, reset=True)
-        # delete cluster folder
-        pass
 
     def sync_conf(self):
         """Sync conf files like redis.properties"""

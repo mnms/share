@@ -14,25 +14,34 @@ port_mn = 18000
 port_mx = 65535
 
 
-def nodes(save):
+def nodes(save=False, default=None):
     logger.debug('ask nodes')
     cli_config = config.get_cli_config()
-    default_nodes = cli_config['default_nodes']
-    nodes = ask(
+    if not default:
+        default = ['127.0.0.1']
+        try:
+            d = cli_config['default_nodes']
+            if d:
+                default = d
+        except KeyError:
+            pass
+    result = ask(
         text='Please type host list. (separate by comma)',
-        default=', '.join(default_nodes))
-    nodes = map(lambda x: x.strip(), nodes.split(','))
+        default=', '.join(default))
+    result = map(lambda x: x.strip(), result.split(','))
     if save:
-        cli_config['default_nodes'] = nodes
+        cli_config['default_nodes'] = result
         config.save_cli_config(cli_config)
-    logger.info('OK, {}'.format(nodes))
-    return nodes
+    logger.info('OK, {}'.format(result))
+    return result
 
 
 def installer():
     logger.debug('ask installer')
     path_of_cli = config.get_path_of_cli()
     release_path = path_of_cli['release_path']
+    if not os.path.exists(release_path):
+        os.mkdir(release_path)
     installer_list = os.listdir(release_path)
     installer_list = list(filter(lambda x: x != '.gitignore', installer_list))
     installer_list.sort(reverse=True)
