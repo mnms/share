@@ -47,11 +47,21 @@ def installer():
 {}
 
 Please enter the number or the path of the installer you want to use
+you can also add file in list by copy to '$FBPATH/releases/'
     '''.format('\n'.join(l))
+    if not installer_list:
+        msg = '''Select installer
+
+        [ INSTALLER LIST ]
+        (empty)
+
+Please enter the path of the installer you want to use
+you can also add file in list by copy to '$FBPATH/releases/'
+        '''.format()
 
     result = ask(msg)
     while True:
-        if unicode(result, 'utf-8').isdecimal():
+        if installer_list and unicode(result, 'utf-8').isdecimal():
             # case: select in list
             result = int(result) - 1
             if result in range(0, len(installer_list)):
@@ -61,7 +71,7 @@ Please enter the number or the path of the installer you want to use
                 return installer_path
             msg = [
                 'Choose a number ',
-                'between 0 and {}'.format(len(installer_list)),
+                'between 1 and {}'.format(len(installer_list)),
                 ', please try again'
             ]
             logger.error(''.join(msg))
@@ -93,6 +103,9 @@ def master_ports(cluster_id):
     logger.debug('ask master ports')
     q = 'How many masters would you like to create on each node?'
     m_count = int(askInt(q, default='1'))
+    if m_count <= 0:
+        logger.warn("The number of master must be greater than 1. try again.")
+        return master_ports(cluster_id)
     logger.info('OK, {}'.format(m_count))
 
     start_m_ports = start_port + cluster_id * master_offset
@@ -157,6 +170,9 @@ def replicas(default=2):
     logger.debug('ask replicas')
     default = str(default)
     result = askInt('How many replicas would you like to create on each master?', default=default)
+    if int(result) < 0:
+        logger.warn("The number of master must be greater than 0. try again.")
+        return replicas()
     logger.info('OK, {}'.format(result))
     return int(result)
 
@@ -231,6 +247,9 @@ def ssd_count(save=True, default=3):
         pass
     default = str(default)
     result = askInt('How many sdd would you like to use?', default=default)
+    if int(result) <= 0:
+        logger.warn("The number of ssd must be greater than 1. try again.")
+        return ssd_count(save=save)
     if save:
         cli_config['default_ssd'] = int(result)
         config.save_cli_config(cli_config)

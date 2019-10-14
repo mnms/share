@@ -429,7 +429,7 @@ class Center(object):
                 if ip in local_ip_list:
                     local_ok = True
             except Exception as e:
-                logger.error(e)
+                logger.debug(e)
                 return False
         return local_ok
 

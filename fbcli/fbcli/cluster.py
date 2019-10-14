@@ -10,12 +10,14 @@ from center import Center
 from config import get_config, get_root_of_cli_config
 from deploy_util import DeployUtil
 from log import logger
+from net import get_ssh, ssh_execute
 from rediscli_util import RedisCliUtil
 from redistrib2.custom_trib import rebalance_cluster_cmd
 from utils import DuplicatedError, open_vim_editor
 import cluster_util
 import ask_util
 import editor
+from functools import reduce
 
 
 def _change_cluster(cluster_id):
@@ -229,7 +231,10 @@ class Cluster(object):
         path_of_cli = config.get_path_of_cli()
         release_path = path_of_cli['release_path']
         installer_list = os.listdir(release_path)
-        installer_list = list(filter(lambda x: x != '.gitignore', installer_list))
+        installer_list = list(
+            filter(
+                lambda x: x != '.gitignore',
+                installer_list))
         installer_list.sort(reverse=True)
         for i, v in enumerate(installer_list):
             installer_list[i] = '\t({}) {}'.format(i, v)
@@ -243,7 +248,7 @@ class Cluster(object):
 
         Please enter the number or the path of the installer you want to use
         '''
- 
+
         msg = [
             'Select installer',
             '[ INSTALLER LIST ]',
@@ -254,8 +259,9 @@ class Cluster(object):
         '\n'.join(msg)
         t = '[ INSTALLER LIST ]\n{}\n'.format('\n'.join(installer_list))
         name = ask(
-            text='Please type installer. if you want another, type absolute path of installer.\n\n{}'.format(t),
-            )
+            text='Please type installer. if you want another, type absolute path of installer.\n\n{}'.format(
+                t),
+        )
         while True:
             if name in installer_list:
                 break
@@ -270,16 +276,16 @@ class Cluster(object):
 
     @staticmethod
     def save_yaml(
-          cluster_id,
-          release,
-          nodes,
-          master_start_port,
-          master_end_port,
-          master_enabled,
-          slave_start_port,
-          slave_end_port,
-          slave_enabled,
-          ssd_count):
+            cluster_id,
+            release,
+            nodes,
+            master_start_port,
+            master_end_port,
+            master_enabled,
+            slave_start_port,
+            slave_end_port,
+            slave_enabled,
+            ssd_count):
         root_of_cli_config = get_root_of_cli_config()
         cluster_path = path_join(root_of_cli_config, 'clusters')
         yaml_path = path_join(cluster_path, cluster_id, 'config.yaml')

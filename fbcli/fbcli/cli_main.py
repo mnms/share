@@ -91,14 +91,15 @@ def run_deploy(cluster_id=None, save=True, force=False):
         return
 
     # validate option
-    if type(save) is not type(bool()):
+    if not isinstance(history_save, bool):
         logger.error("option '--save' can use only True or False")
         return
+    save = history_save
     logger.debug("option 'save': {}".format(save))
-    if type(force) is not type(bool()):
+    if not isinstance(force, bool):
         logger.error("option '--force' can use only True or False")
         return
-    logger.debug("option 'force': {}".format(save))
+    logger.debug("option 'force': {}".format(force))
 
     first_deploy = DeployUtil().is_first(cluster_id)
     pending = DeployUtil().is_pending(cluster_id)
@@ -257,8 +258,8 @@ def run_deploy(cluster_id=None, save=True, force=False):
         if not client:
             logger.error("ssh connection fail: '{}'".format(node))
             return
-        command = 'mkdir -p {0} && touch {0}/.deploy.state'.format(cluster_path)
-        ssh_execute(client=client, command=command)
+        cmd = 'mkdir -p {0} && touch {0}/.deploy.state'.format(cluster_path)
+        ssh_execute(client=client, command=cmd)
         client.close()
 
         DeployUtil().transfer_installer(node, cluster_id, installer_path)

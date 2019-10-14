@@ -39,7 +39,7 @@ def convert_list_2_seq(ports):
     s = ports[0]
     pre = ports[0] - 1
     for port in ports:
-        if pre != port - 1: 
+        if pre != port - 1:
             if s != pre:
                 ret.append('$(seq {} {})'.format(s, pre))
             else:
@@ -55,16 +55,20 @@ def convert_list_2_seq(ports):
 
 
 def rsync_fb_conf():
+    logger.info('Sync conf...')
     cluster_id = config.get_cur_cluster_id()
     if not validate_id(cluster_id):
-        logger.warn('Fail: {}'.format(cluster_id))
+        logger.warn('Invalid cluster id: {}'.format(cluster_id))
         return
     cluster_list = get_cluster_list()
     if cluster_id not in cluster_list:
-        logger.warn('Fail: {}'.format(cluster_id))
+        logger.warn('Cluster not exist: {}'.format(cluster_id))
         return
     my_address = config.get_local_ip_list()
-    nodes = config.get_node_ip_list()
+    path_of_fb = config.get_path_of_fb(cluster_id)
+    props_path = path_of_fb['redis_properties']
+    key = 'sr2_redis_master_hosts'
+    nodes = config.get_props(props_path, key, [])
     meta = [['NODE', 'RESULT']]
     path_of_fb = config.get_path_of_fb(cluster_id)
     conf_path = path_of_fb['conf_path']
@@ -83,4 +87,3 @@ def rsync_fb_conf():
         net.copy_dir_to_remote(client, conf_path, conf_path)
         meta.append([node, color.green('OK')])
     utils.print_table(meta)
-    

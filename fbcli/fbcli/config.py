@@ -246,8 +246,8 @@ def get_tsr2_home(cluster_id=-1):
     base_directory = os.path.expanduser(base_directory)
     cluster_id = get_cur_cluster_id()
     tsr2_home = path_join(
-        base_directory, 
-        'cluster_{}'.format(cluster_id), 
+        base_directory,
+        'cluster_{}'.format(cluster_id),
         'tsr2-assembly-1.0.0-SNAPSHOT'
     )
     return tsr2_home
@@ -329,7 +329,7 @@ def get_path_of_cli(cluster_id=-1):
     cluster_path = path_join(root_of_cli_config, 'clusters', str(cluster_id))
     conf_path = path_join(cluster_path, 'conf')
     redis_properteis = path_join(conf_path, 'redis.properties')
-    
+
     return {
         'cli_config_root': root_of_cli_config,
         'conf_backup_path': conf_backup_path,
@@ -346,12 +346,19 @@ def reset_conf_of_cli(cluster_id, backup=False):
     path_of_cli = get_path_of_cli(cluster_id)
     if backup and os.path.isdir(path_of_cli['conf_path']):
         current_time = strftime("%Y%m%d%H%M%s", gmtime())
-        conf_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, current_time)
+        conf_backup_dir = 'cluster_{}_conf_bak_{}'.format(
+            cluster_id, current_time)
         conf_backup_path = path_of_cli['conf_backup_path']
-        shutil.copytree(path_of_fb['conf_path'], path_join(conf_backup_path, conf_backup_dir))
+        shutil.copytree(
+            path_of_fb['conf_path'],
+            path_join(
+                conf_backup_path,
+                conf_backup_dir))
         logger.debug("conf backup: '{}'".format(conf_backup_dir))
     if not os.path.isdir(path_of_cli['cluster_path']):
-        logger.debug("FileNotExisted: '{}'".format(path_of_cli['cluster_path']))
+        logger.debug(
+            "FileNotExisted: '{}'".format(
+                path_of_cli['cluster_path']))
         os.mkdir(path_of_cli['cluster_path'])
         logger.debug("CreateDir: '{}'".format(path_of_cli['cluster_path']))
     if os.path.isdir(path_of_cli['conf_path']):
@@ -381,10 +388,10 @@ def save_cli_config(cli_config):
 
 def is_key_enable(props_path, key):
     with open(props_path, 'r') as f:
-        key = key.upper() # SR2_REDIS_MASTER_HOSTS
+        key = key.upper()  # SR2_REDIS_MASTER_HOSTS
         lines = f.readlines()
         for i, line in enumerate(lines):
-            p = re.compile('export {}=(\(.+\)|[^ \s\t\r\n\v\f]+)'.format(key))
+            p = re.compile(r'export {}=(\(.+\)|[^ \s\t\r\n\v\f]+)'.format(key))
             m = p.match(line)
             if m:
                 return True
@@ -398,15 +405,15 @@ def make_key_enable(props_path, key, v1_flg=False):
             return
     with open(props_path, 'r') as f:
         buf = []
-        key = key.upper() # SR2_REDIS_MASTER_HOSTS
+        key = key.upper()  # SR2_REDIS_MASTER_HOSTS
         lines = f.readlines()
         for i, line in enumerate(lines):
-            p = re.compile('export {}=(\(.+\)|[^ \s\t\r\n\v\f]+)'.format(key))
+            p = re.compile(r'export {}=(\(.+\)|[^ \s\t\r\n\v\f]+)'.format(key))
             m = p.search(line)
             if line.strip().startswith('#') and m:
                 s = m.start()
                 buf.append(line[s:])
-                buf = buf + lines[i+1:]
+                buf = buf + lines[i + 1:]
                 break
             buf.append(line)
     with open(props_path, 'w') as f:
@@ -416,14 +423,14 @@ def make_key_enable(props_path, key, v1_flg=False):
 def make_key_disable(props_path, key):
     with open(props_path, 'r') as f:
         buf = []
-        key = key.upper() # SR2_REDIS_MASTER_HOSTS
+        key = key.upper()  # SR2_REDIS_MASTER_HOSTS
         lines = f.readlines()
         for i, line in enumerate(lines):
-            p = re.compile('export {}=(\(.+\)|[^ \s\t\r\n\v\f]+)'.format(key))
+            p = re.compile(r'export {}=(\(.+\)|[^ \s\t\r\n\v\f]+)'.format(key))
             m = p.match(line)
             if m:
                 buf.append('#' + line)
-                buf = buf + lines[i+1:]
+                buf = buf + lines[i + 1:]
                 break
             buf.append(line)
     with open(props_path, 'w') as f:
@@ -431,12 +438,13 @@ def make_key_disable(props_path, key):
 
 
 def set_props(props_path, key, value):
-    if type(value) is type(str()):
+    if isinstance(value, type(str())):
         value = '"{}"'.format(value)
     if type(value) in [type(list()), type(tuple()), type(set())]:
-        f = lambda x: '"{}"'.format(x) if type(x) is type(str()) and not x.startswith('$') else x
+        def f(x): return '"{}"'.format(x) if isinstance(
+            x, type(str())) and not x.startswith('$') else x
         value = map(f, value)
-        f = lambda x: str(x) if type(x) is type(int()) else x
+        def f(x): return str(x) if isinstance(x, type(int())) else x
         value = map(f, value)
         value = "( {} )".format(' '.join(value))
     key = key.upper()
@@ -445,11 +453,11 @@ def set_props(props_path, key, value):
         buf = []
         lines = f.readlines()
         for i, line in enumerate(lines):
-            p = re.compile('export {}=(\(.+\)|[^ \s\t\r\n\v\f]+)'.format(key))
+            p = re.compile(r'export {}=(\(.+\)|[^ \s\t\r\n\v\f]+)'.format(key))
             m = p.match(line)
             if m:
                 buf.append('export {}={}\n'.format(key, value))
-                buf = buf + lines[i+1:]
+                buf = buf + lines[i + 1:]
                 break
             buf.append(line)
     with open(props_path, 'w') as f:
@@ -478,7 +486,6 @@ def get_props(props_path, key, default=None):
         return default
 
 
-
 def get_props_as_dict(props_path):
     ret = dict()
 
@@ -488,18 +495,20 @@ def get_props_as_dict(props_path):
             for line in lines:
                 if line.strip().startswith('#'):
                     continue
-                p = re.compile('export [^ \s\t\r\n\v\f]+=(\(.+\)|[^ \s\t\r\n\v\f]+)')
+                p = re.compile(
+                    r'export [^ \s\t\r\n\v\f]+=(\(.+\)|[^ \s\t\r\n\v\f]+)')
                 m = p.search(line)
                 if not m:
                     continue
                 s = m.start()
                 e = m.end()
-                key, value = line[s:e+1].replace('export ', '').split('=')
+                key, value = line[s:e + 1].replace('export ', '').split('=')
                 value = value.strip()
                 key = key.lower()
-                p = re.compile('\(.*\)')
+                p = re.compile(r'\(.*\)')
                 m = p.match(value)
-                f = lambda x: int(x) if unicode(x, 'utf-8').isdecimal() else x
+                def f(x): return int(x) if unicode(
+                    x, 'utf-8').isdecimal() else x
                 if m:
                     cmd = [
                         'FBCLI_TMP_ENV={}'.format(value),
