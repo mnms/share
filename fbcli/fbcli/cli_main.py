@@ -650,7 +650,15 @@ def _initial_check():
         logger.error('Need to ssh-keygen for localhost')
         exit(1)
     cli_config = config.get_cli_config()
-    base_directory = cli_config['base_directory']
+    try:
+        base_directory = cli_config['base_directory']
+    except KeyError:
+        pass
+    except TypeError:
+        root_of_cli_config = config.get_root_of_cli_config()
+        conf_path = path_join(root_of_cli_config, 'config')
+        os.system('rm {}'.format(conf_path))
+        base_directory = None
     if not base_directory or not base_directory.startswith(('~', '/')):
         base_directory = ask_util.base_directory()
     base_directory = os.path.expanduser(base_directory)

@@ -92,8 +92,7 @@ if 'FBPATH' not in environ:
     exit(1)
 p = environ['FBPATH']
 if not isdir(p):
-    logger.error('DirectoryNotExisted: {}'.format(p))
-    exit(1)
+    mkdir(p)
 file_path = dirname(expanduser(p))
 file_path = expanduser(path_join(file_path, 'logs'))
 if isdir(file_path):
@@ -113,8 +112,11 @@ if isdir(file_path):
     rotating_file_handler.push_application()
     logger.debug('start logging on file: {}'.format(filename))
 else:
-    logger.warn("No such directory: '{}'".format(file_path))
-    logger.warn('Could not logging in file. Confirm and restart.')
+    try:
+        mkdir(file_path)
+    except Exception:
+        logger.error("CreateDirError: {}".format(file_path))
+        logger.warn('Could not logging in file. Confirm and restart.')
     
 
 def set_level(level):

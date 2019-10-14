@@ -36,9 +36,8 @@ def get_root_of_cli_config():
         export FBPATH={}'''.format(p))
         exit(1)
     p = os.environ['FBPATH']
-    if not os.path.isdir(p):
-        logger.error('DirectoryNotExisted: {}'.format(p))
-        exit(1)
+    if not os.path.exists(p):
+        os.path.mkdir(p)
     return os.environ['FBPATH']
 
 
@@ -50,6 +49,9 @@ def get_cur_cluster_id():
     root_of_cli_config = get_root_of_cli_config()
     head_path = path_join(root_of_cli_config, 'HEAD')
     cluster_id = -1
+    if not os.path.exists(head_path):
+        with open(head_path, 'w') as fd:
+            fd.writelines(str(cluster_id))
     with open(head_path, 'r') as fd:
         l = fd.readline()
         cluster_id = int(l)
