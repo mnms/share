@@ -121,4 +121,5 @@ cli_history
 sql_history
 pip_modules
 conf_backup
-
+.flashbase/config
+.flashbase/HEAD
