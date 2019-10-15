@@ -113,7 +113,7 @@ def master_ports(cluster_id):
     q = 'How many masters would you like to create on each node?'
     m_count = int(askInt(q, default='1'))
     if m_count <= 0:
-        logger.warn("The number of master must be greater than 1. try again.")
+        logger.warn("The number of master must be greater than 0. try again.")
         return master_ports(cluster_id)
     logger.info('OK, {}'.format(m_count))
 
@@ -180,7 +180,11 @@ def replicas(default=2):
     default = str(default)
     result = askInt('How many replicas would you like to create on each master?', default=default)
     if int(result) < 0:
-        logger.warn("The number of master must be greater than 0. try again.")
+        msg = [
+            'The number of master must be greater than or equal to 0.',
+            'try again.',
+        ]
+        logger.warn(' '.join(msg))
         return replicas()
     logger.info('OK, {}'.format(result))
     return int(result)
@@ -257,7 +261,7 @@ def ssd_count(save=True, default=3):
     default = str(default)
     result = askInt('How many sdd would you like to use?', default=default)
     if int(result) <= 0:
-        logger.warn("The number of ssd must be greater than 1. try again.")
+        logger.warn("The number of ssd must be greater than 0. try again.")
         return ssd_count(save=save)
     if save:
         cli_config['default_ssd'] = int(result)
