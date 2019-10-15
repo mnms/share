@@ -10,7 +10,7 @@
 
 [클러스터 생성](#클러스터-생성)
 
-[Version Update](#version-update)
+[Re-Deploy](#re-deploy)
 
 [Logging in file](#logging-in-file)
 
@@ -158,6 +158,7 @@ Select installer
     (3) tsr2-installer.bin.flashbase_v1.1.08.centos
 
 Please enter the number or the path of the installer you want to use
+you can also add file in list by copy to '$FBPATH/releases/'
 1
 ```
 
@@ -181,7 +182,7 @@ ip주소 혹은 hostname을 입력합니다. 여러 개를 입력하는 경우 �
 
 가장 최근에 입력했던 값을 default value로 보여줍니다.
 
-현재 입력하는 값이 default value로 저장되지 않도록 하려면 deploy시 `--save=False` 옵션을 주세요.
+현재 입력하는 값이 default value로 저장되지 않도록 하려면 deploy시 `--history-save=False` 옵션을 주세요.
 
 
 
@@ -213,7 +214,7 @@ Please type ports. Use hyphen(-) for range. [21250-21251]
 OK, ['21250-21251']
 ```
 
-각 master 마다 몇 개의 slave를 생성할 지 입력합니다. 만약 5개의 마스터를 생성하고 2를 입력한다면 총 10개의 slave가 생성됩니다.
+각 master 마다 몇 개의 slave를 생성할 지 입력합니다. 만약 5개의 마스터를 생성하고 2를 입력한다면 총 10개의 slave가 생성됩니다. slave가 없다면 0을 입력하세요.
 
 port 번호는 cluster id를 기반으로 추천해줍니다.
 
@@ -235,7 +236,7 @@ Type prefix of flash_db_path [~/ssd_]
 
 가장 최근에 입력했던 값을 default value로 보여줍니다.
 
-현재 입력하는 값이 default value로 저장되지 않도록 하려면 deploy시 `--save=False` 옵션을 주세요.
+현재 입력하는 값이 default value로 저장되지 않도록 하려면 deploy시 `--history-save=False` 옵션을 주세요.
 
 
 
@@ -497,15 +498,9 @@ nodeD:21200 - [Errno 111] Connection refused
 
 
 
-## Version Update
+## Re-Deploy
 
-flashbase version을 변경하고 싶다면 재설치를 위해 `deploy` 명령어를 사용합니다.
-
-> 클러스터에 접속하지 않고 argument로 클러스터 번호를 주어도 됩니다.
->
-> ```
-> root@flashbase:-> deploy 32
-> ```
+flashbase version을 변경하거나 재설치를 원한다면 `deploy` 명령어를 통해 진행할 수 있습니다.
 
 
 
@@ -517,6 +512,12 @@ root@flashbase:32> deploy
 (Watch out) Cluster 32 is already deployed. Do you want to deploy again? (y/n) [n]
 y
 ```
+
+> 클러스터에 접속하지 않고 argument로 클러스터 번호를 주어도 됩니다.
+>
+> ```
+> root@flashbase:-> deploy 32
+> ```
 
 
 
@@ -536,6 +537,20 @@ Please enter the number or the path of the installer you want to use
 
 
 
+#### Nodes
+
+```
+Please type host list. (separate by comma) [nodeA, nodeB, nodeC, nodeD]
+
+OK, [nodeA, nodeB, nodeC, nodeD]
+```
+
+기존에 사용중인 node를 기본값으로 보여줍니다. node 변동이 없을 경우 그대로 입력하면 됩니다.
+
+node 변경이 있다면 deploy를 진행하기 전에 `stop --reset` 을 하는 것을 추천합니다.
+
+
+
 #### Restore
 
 ```
@@ -543,7 +558,7 @@ Do you want to restore conf? (y/n)
 y
 ```
 
-현재 설정값을 그대로 사용할 것인지 물어봅니다. `y` 를 선택합니다.
+현재 설정값을 그대로 사용할 것인지 물어봅니다. 선택여부에 따라 deploy 정보를 물어봅니다.
 
 cluster와 conf 백업은 기본적으로 진행됩니다.
 
