@@ -9,9 +9,9 @@ import shutil
 import yaml
 
 from log import logger
-from exceptions import FileNotExistError, YamlSyntaxError
+from exceptions import FileNotExistError, YamlSyntaxError, PropsSyntaxError
 
-start_port = 18000
+# start_port = 18000
 
 
 def get_local_ip():
@@ -83,16 +83,6 @@ def get_repo_cluster_template_path():
     return path_join(root_of_cli_config, 'clusters', 'template')
 
 
-def is_cluster_config_dir_exist(cluster_id=-1):
-    """Check cluster config dir exist or not
-
-    :param cluster_id:
-    :return: True | False
-    """
-    dir = get_repo_cluster_path(cluster_id)
-    return os.path.isdir(dir)
-
-
 def get_config(cluster_id=-1, template=False):
     """Get config
 
@@ -110,14 +100,6 @@ def get_config(cluster_id=-1, template=False):
         return fb_config
     assert False
     return None
-
-
-def get_master_node():
-    """Get first master node
-    """
-    master_node = get_config()['nodes'][0]
-    logger.debug('master_node: %s' % master_node)
-    return master_node
 
 
 def get_node_ip_list(cluster_id=-1):
@@ -304,6 +286,8 @@ def get_path_of_fb(cluster_id):
     sr2_home = path_join(cluster_path, 'tsr2-assembly-1.0.0-SNAPSHOT')
     conf_path = path_join(sr2_home, 'conf')
     redis_properties = path_join(conf_path, 'redis.properties')
+    master_template = path_join(conf_path, 'redis-master.conf.template')
+    slave_template = path_join(conf_path, 'redis-slave.conf.template')
 
     return {
         'base_directory': base_directory,
@@ -313,6 +297,8 @@ def get_path_of_fb(cluster_id):
         'conf_path': conf_path,
         'release_path': release_path,
         'redis_properties': redis_properties,
+        'master_template': master_template,
+        'slave_template': slave_template,
     }
 
 

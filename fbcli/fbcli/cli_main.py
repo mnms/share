@@ -26,10 +26,9 @@ import utils
 from cli import Cli
 from cluster import Cluster
 from config import get_config, get_cur_cluster_id, get_env_dict, \
-    get_node_ip_list, get_root_of_cli_config, is_cluster_config_dir_exist
+    get_node_ip_list, get_root_of_cli_config
 import config
 from deploy_util import DeployUtil, DEPLOYED, PENDING, CLEAN
-from flashbase import Flashbase
 from log import logger
 import log
 from net import get_ssh, ssh_execute_async, ssh_execute, get_sftp, is_exist
@@ -545,7 +544,6 @@ for automatically generating CLIs
         """
         self.deploy = run_deploy
         self.monitor = run_monitor
-        self.flashbase = Flashbase()
         self.cluster = Cluster()
         self.thriftserver = ThriftServer()
         self.ll = log.set_level
@@ -606,40 +604,6 @@ def run_test():
     ip = '127.0.0.1'
     port = 18001
     center.Infra().update_redis_conf(ip, port)
-
-
-def _repair_meta_cluster():
-    _ = get_root_of_cli_config()  # check repo path
-    meta_cluster_id = 0
-    dir_exist = is_cluster_config_dir_exist(meta_cluster_id)
-    if dir_exist:
-        logger.info('Meta cluster config exist. (go to next step)')
-    else:
-        logger.info('Meta cluster config not exist.')
-        yes = askBool('Do you want to create META CLUSTER config folder?')
-        if yes:
-            template = -1
-            Cluster().clone(template, meta_cluster_id)
-            _repair_meta_cluster()
-        else:
-            logger.info('aborted')
-            exit(1)
-    _run_deploy(0)
-    yes = askBool('Do you want to restart cluster?')
-    if yes:
-        force = askBool('(Watch out) Do you want forced restart?', default='n')
-        reset = askBool('(Watch out) Do you want reset?', default='n')
-        Cluster().restart(force=force, reset=reset)
-        exit(0)
-
-
-def _is_meta_cluster_ok():
-    get_root_of_cli_config()  # check repo path
-    try:
-        utils.create_cluster_connection_0()
-        return True
-    except:
-        return False
 
 
 def _is_auth_ok(user, password):

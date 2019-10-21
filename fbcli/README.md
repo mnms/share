@@ -378,6 +378,24 @@ re-deploy의 경우 새로 추가되는 host만 검사합니다.
 
 
 
+* LocalhostIncludeError
+
+* ```
+  Check status of hosts...
+  +-------+------------------+
+  | HOST  | STATUS           |
+  +-------+------------------+
+  | nodeB | OK               |
+  | nodeC | OK               |
+  | nodeD | OK               |
+  +-------+------------------+
+  Must include localhost
+  ```
+
+deploy 에서 host 정보에 localhost를 포함하지 않는 경우 에러가 발생합니다. `localhost` 혹은 `127.0.0.1` 외에 ip주소나 hostname으로 입력해도 무방합니다.
+
+
+
 ## 클러스터 생성
 
 deploy가 완료되었다면 클러스터 생성을 진행할 수 있습니다.

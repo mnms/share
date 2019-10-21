@@ -7,6 +7,7 @@ from center import Center
 from deploy_util import DeployUtil
 from rediscli_util import RedisCliUtil
 from utils import TableReport, print_table
+import cluster_util
 
 
 class RedisCliInfo(object):
@@ -117,5 +118,5 @@ class RedisCliConfig(object):
                 port=port)
         if save:
             RedisCliUtil.save_redis_template_config(key, value)
-            DeployUtil.rsync_and_update_conf()
+            cluster_util.rsync_fb_conf()
             Center().update_redis_conf()

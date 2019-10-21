@@ -48,21 +48,29 @@ class Center(object):
         """
         logger.debug('update_redis_conf')
         self._update_ip_port()
-        home = config.get_tsr2_home()
-        master_template_path = path_join(
-            home, 'conf', 'redis-master.conf.template')
-        slave_template_path = path_join(
-            home, 'conf', 'redis-slave.conf.template')
+        cluster_id = config.get_cur_cluster_id()
+        path_of_fb = config.get_path_of_fb(cluster_id)
+        master_template_path = path_of_fb['master_template']
+        slave_template_path = path_of_fb['slave_template']
         for ip in self.ip_list:
             client = get_ssh(ip)
-            redis_conf_dir = path_join(home, 'conf', 'redis')
-            ssh_execute(
-                client=client,
-                command='mkdir -p %s' % redis_conf_dir)
-            self._update_redis_conf(client, master_template_path,
-                                    redis_conf_dir, ip, self.master_port_list)
-            self._update_redis_conf(client, slave_template_path,
-                                    redis_conf_dir, ip, self.slave_port_list)
+            redis_conf_dir = path_join(path_of_fb['conf_path'], 'redis')
+            ssh_execute(client=client, command='mkdir -p %s' % redis_conf_dir)
+            self._update_redis_conf(
+                client,
+                master_template_path,
+                redis_conf_dir,
+                ip,
+                self.master_port_list
+            )
+            self._update_redis_conf(
+                client,
+                slave_template_path,
+                redis_conf_dir,
+                ip,
+                self.slave_port_list
+            )
+            client.close()
         logger.info('update_redis_conf complete')
 
     def backup_server_logs(self):

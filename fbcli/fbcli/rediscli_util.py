@@ -148,17 +148,12 @@ class RedisCliUtil(object):
         :param value: value
         """
         key = key.strip()
-        repo_cluster_home = config.get_repo_cluster_path()
-        master = path_join(
-            repo_cluster_home,
-            'tsr2-conf',
-            'redis-master.conf.template')
-        slave = path_join(
-            repo_cluster_home,
-            'tsr2-conf',
-            'redis-slave.conf.template')
-        RedisCliUtil._save_config(master, key, value)
-        RedisCliUtil._save_config(slave, key, value)
+        cluster_id = config.get_cur_cluster_id()
+        path_of_fb = config.get_path_of_fb(cluster_id)
+        master_template = path_of_fb['master_template']
+        slave_template = path_of_fb['slave_template']
+        RedisCliUtil._save_config(master_template, key, value)
+        RedisCliUtil._save_config(slave_template, key, value)
 
     @staticmethod
     def _save_config(f, key, value):
