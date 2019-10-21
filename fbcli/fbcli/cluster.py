@@ -219,7 +219,7 @@ class Cluster(object):
         return host_list
 
     def _installer(self):
-        path_of_cli = config.get_path_of_cli()
+        path_of_cli = config.get_path_of_cli(None)
         release_path = path_of_cli['release_path']
         installer_list = os.listdir(release_path)
         installer_list = list(

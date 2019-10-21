@@ -17,7 +17,7 @@ def validate_id(cluster_id):
 
 
 def get_cluster_list():
-    path_of_fb = config.get_path_of_fb()
+    path_of_fb = config.get_path_of_fb(None)
     base_dir = path_of_fb['base_directory']
     buf = os.listdir(base_dir)
     buf = filter(lambda x: x.startswith('cluster_'), buf)
@@ -69,12 +69,12 @@ def rsync_fb_conf():
     props_path = path_of_fb['redis_properties']
     key = 'sr2_redis_master_hosts'
     nodes = config.get_props(props_path, key, [])
-    meta = [['NODE', 'RESULT']]
+    meta = [['HOST', 'RESULT']]
     path_of_fb = config.get_path_of_fb(cluster_id)
     conf_path = path_of_fb['conf_path']
     cluster_path = path_of_fb['cluster_path']
     for node in nodes:
-        if node in my_address:
+        if net.get_ip(node) in my_address:
             meta.append([node, color.green('OK')])
             continue
         client = net.get_ssh(node)

@@ -9,6 +9,7 @@ import shutil
 import yaml
 
 from log import logger
+from exceptions import FileNotExistError, YamlSyntaxError
 
 start_port = 18000
 
@@ -205,11 +206,7 @@ def get_slave_port_list(cluster_id=-1):
     props_path = path_of_fb['redis_properties']
     key = 'sr2_redis_slave_ports'
     ports = get_props(props_path, key, [])
-    if is_slave_enabled():
-        key = 'sr2_redis_slave_ports'
-        ports = get_props(props_path, key, [])
-        return ports
-    return []
+    return ports
 
     # Older Code
     # fb_config = get_config(cluster_id)
@@ -296,11 +293,8 @@ def get_env_dict(ip, port):
     }
 
 
-def get_path_of_fb(cluster_id=-1, home_path=None):
-    if not home_path:
-        home_path = os.path.expanduser('~')
+def get_path_of_fb(cluster_id):
     cluster_dir = 'cluster_{}'.format(cluster_id)
-
     cli_config = get_cli_config()
     base_directory = cli_config['base_directory']
     base_directory = os.path.expanduser(base_directory)
@@ -322,8 +316,8 @@ def get_path_of_fb(cluster_id=-1, home_path=None):
     }
 
 
-def get_path_of_cli(cluster_id=-1):
-    root_of_cli_config = get_root_of_cli_config()
+def get_path_of_cli(cluster_id):
+    root_of_cli_config = os.path.expanduser(get_root_of_cli_config())
     conf_backup_path = path_join(root_of_cli_config, 'conf_backup')
     release_path = path_join(root_of_cli_config, 'releases')
     cluster_path = path_join(root_of_cli_config, 'clusters', str(cluster_id))
@@ -493,27 +487,25 @@ def get_props(props_path, key, default=None):
 
 def get_props_as_dict(props_path):
     ret = dict()
-
-    try:
-        with open(props_path, 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                if line.strip().startswith('#'):
-                    continue
-                p = re.compile(
-                    r'export [^ \s\t\r\n\v\f]+=(\(.+\)|[^ \s\t\r\n\v\f]+)')
-                m = p.search(line)
-                if not m:
-                    continue
-                s = m.start()
-                e = m.end()
-                key, value = line[s:e + 1].replace('export ', '').split('=')
-                value = value.strip()
-                key = key.lower()
-                p = re.compile(r'\(.*\)')
-                m = p.match(value)
-                def f(x): return int(x) if unicode(
-                    x, 'utf-8').isdecimal() else x
+    with open(props_path, 'r') as f:
+        lines = f.readlines()
+        for i, line in enumerate(lines):
+            if line.strip().startswith('#'):
+                continue
+            p = re.compile(
+                r'export [^ \s\t\r\n\v\f]+=(\(.+\)|[^ \s\t\r\n\v\f]+)')
+            m = p.search(line)
+            if not m:
+                continue
+            s = m.start()
+            e = m.end()
+            key, value = line[s:e + 1].replace('export ', '').split('=')
+            value = value.strip()
+            key = key.lower()
+            p = re.compile(r'\(.*\)')
+            m = p.match(value)
+            def f(x): return int(x) if x.decode('utf-8').isdecimal() else x
+            try:
                 if m:
                     cmd = [
                         'FBCLI_TMP_ENV={}'.format(value),
@@ -531,6 +523,47 @@ def get_props_as_dict(props_path):
                     value = subprocess.check_output(cmd, shell=True).strip()
                     value = f(value)
                 ret[key] = value
-    except IOError as e:
-        raise(IOError(e))
+            except subprocess.CalledProcessError:
+                raise PropsSyntaxError(value, i + 1)
     return ret
+
+
+def get_deploy_history():
+    file_path = path_join(get_root_of_cli_config(), 'deploy_history')
+    default = {
+        'hosts': ['127.0.0.1'],
+        'master_count': 1,
+        'replicas': 2,
+        'ssd_count': 3,
+        'prefix_of_rd': '~/sata_ssd/ssd_',
+        'prefix_of_rdbp': '~/sata_ssd/ssd_',
+        'prefix_of_fdbp': '~/sata_ssd/ssd_',
+    }
+    if not os.path.exists(file_path):
+        with open(file_path, 'w') as f:
+            yaml.dump(default, f, default_flow_style=False)
+    try:
+        with open(file_path, 'r') as f:
+            ret = yaml.load(f)
+        if ret is None:
+            with open(file_path, 'w') as f:
+                yaml.dump(default, f, default_flow_style=False)
+        with open(file_path, 'r') as f:
+            ret = yaml.load(f)
+        with open(file_path, 'w') as f:
+            d_keys = default.keys()
+            r_keys = ret.keys()
+            for key in d_keys:
+                if key not in r_keys:
+                    ret[key] = default[key]
+            yaml.dump(ret, f, default_flow_style=False)
+        with open(file_path, 'r') as f:
+            return yaml.load(f)
+    except yaml.scanner.ScannerError:
+        raise YamlSyntaxError(file_path)
+
+
+def save_deploy_history(history):
+    file_path = path_join(get_root_of_cli_config(), 'deploy_history')
+    with open(file_path, 'w') as f:
+        yaml.dump(history, f, default_flow_style=False)

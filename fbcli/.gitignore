@@ -123,3 +123,4 @@ pip_modules
 conf_backup
 .flashbase/config
 .flashbase/HEAD
+.flashbase/deploy_history

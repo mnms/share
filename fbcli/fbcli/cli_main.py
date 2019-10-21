@@ -28,7 +28,7 @@ from cluster import Cluster
 from config import get_config, get_cur_cluster_id, get_env_dict, \
     get_node_ip_list, get_root_of_cli_config, is_cluster_config_dir_exist
 import config
-from deploy_util import DeployUtil
+from deploy_util import DeployUtil, DEPLOYED, PENDING, CLEAN
 from flashbase import Flashbase
 from log import logger
 import log
@@ -44,6 +44,15 @@ import color
 import ask_util
 import cluster_util
 import editor
+from exceptions import (
+    PropsKeyError,
+    SSHConnectionError,
+    HostConnectionError,
+    HostNameError,
+    FileNotExistError,
+    YamlSyntaxError,
+    PropsSyntaxError,
+)
 
 
 fb_completer = WordCompleter([
@@ -78,7 +87,8 @@ def run_monitor():
     ssh_execute_async(client=client, command=command)
 
 
-def run_deploy(cluster_id=None, history_save=True, force=False):
+# def run_deploy_v3(cluster_id=None, history_save=True, force=False):
+def run_deploy(cluster_id=None, history_save=True):
     # validate cluster id
     if cluster_id is None:
         cluster_id = get_cur_cluster_id()
@@ -92,32 +102,19 @@ def run_deploy(cluster_id=None, history_save=True, force=False):
 
     # validate option
     if not isinstance(history_save, bool):
-        logger.error("option '--save' can use only True or False")
+        logger.error("option '--history-save' can use only 'True' or 'False'")
         return
-    save = history_save
-    logger.debug("option 'save': {}".format(save))
-    if not isinstance(force, bool):
-        logger.error("option '--force' can use only True or False")
-        return
-    logger.debug("option 'force': {}".format(force))
+    logger.debug("option '--history-save': {}".format(history_save))
+    # if not isinstance(force, bool):
+    #     logger.error("option '--force' can use only 'True' or 'False'")
+    #     return
+    # logger.debug("option '--force': {}".format(force))
+    _deploy(cluster_id, history_save)
 
-    first_deploy = DeployUtil().is_first(cluster_id)
-    pending = DeployUtil().is_pending(cluster_id)
-    first = first_deploy or pending
-    restore_yes = False
-    current_time = strftime("%Y%m%d%H%M%s", gmtime())
-    cluster_backup_dir = 'cluster_{}_bak_{}'.format(cluster_id, current_time)
-    conf_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, current_time)
-    meta = [['NAME', 'VALUE']]
-    local_ip = config.get_local_ip()
-    backup_nodes = []
-    if not first:
-        props_path = config.get_path_of_fb(cluster_id)['redis_properties']
-        key = 'sr2_redis_master_hosts'
-        backup_nodes = config.get_props(props_path, key, [])
 
-    # notice re-deploy
-    if not first:
+def _deploy(cluster_id, history_save):
+    deploy_state = DeployUtil().get_state(cluster_id)
+    if deploy_state == DEPLOYED:
         q = [
             color.YELLOW,
             '(Watch out) ',
@@ -130,223 +127,191 @@ def run_deploy(cluster_id=None, history_save=True, force=False):
             logger.info('Cancel deploy.')
             return
 
-    # ask info
+    restore_yes = None
+    current_time = strftime("%Y%m%d%H%M%s", gmtime())
+    cluster_backup_dir = 'cluster_{}_bak_{}'.format(cluster_id, current_time)
+    conf_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, current_time)
+    tmp_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, 'tmp')
+    meta = [['NAME', 'VALUE']]
+    path_of_fb = config.get_path_of_fb(cluster_id)
+    conf_path = path_of_fb['conf_path']
+    props_path = path_of_fb['redis_properties']
+    cluster_path = path_of_fb['cluster_path']
+    path_of_cli = config.get_path_of_cli(cluster_id)
+    conf_backup_path = path_of_cli['conf_backup_path']
+    tmp_backup_path = path_join(conf_backup_path, tmp_backup_dir)
+    local_ip = config.get_local_ip()
+
+    # ask installer
     installer_path = ask_util.installer()
-    meta.append(['installer', os.path.basename(installer_path)])
+    installer_name = os.path.basename(installer_path)
+    meta.append(['installer', installer_name])
 
-    nodes = ask_util.nodes(save=save, default=backup_nodes)
-    meta.append(['nodes', '\n'.join(nodes)])
-    if not nodes:
-        logger.error('Nodes cannot empty')
-        return
-
-    if not first:
-        restore_yes = askBool('Do you want to restore conf?', ['y', 'n'])
+    # ask restore conf
+    if deploy_state == DEPLOYED:
+        restore_yes = ask_util.askBool('Do you want to restore conf?')
         meta.append(['restore', restore_yes])
 
-    if not restore_yes:
-        m_ports, result = ask_util.master_ports(cluster_id)
-        meta.append(['master ports', result])
-        replicas = ask_util.replicas()
-        if replicas > 0:
-            m_count = len(m_ports)
-            s_ports, result = ask_util.slave_ports(
-                cluster_id,
-                m_count,
-                replicas
-            )
-            meta.append(['slave ports', result])
-        ssd_count = ask_util.ssd_count(save=save)
-        meta.append(['ssd count', ssd_count])
-        prefix_of_rdp = ask_util.prefix_of_rdp(save=save)
-        meta.append(['redis data path', prefix_of_rdp])
-        prefix_of_rdbp = ask_util.prefix_of_rdbp(save=save)
-        meta.append(['redis db path', prefix_of_rdbp])
-        prefix_of_fdbp = ask_util.prefix_of_fdbp(save=save)
-        meta.append(['flash db path', prefix_of_fdbp])
-
-    # confirm info
+    # input props
+    hosts = []
+    if deploy_state == DEPLOYED:
+        if restore_yes:
+            meta += DeployUtil().get_meta_from_props(props_path)
+            hosts = config.get_props(props_path, 'sr2_redis_master_hosts')
+        else:
+            if os.path.exists(tmp_backup_path):
+                q = 'There is a history of modification. Do you want to load?'
+                yes = ask_util.askBool(q)
+                if not yes:
+                    shutil.rmtree(tmp_backup_path)
+            if not os.path.exists(tmp_backup_path):
+                shutil.copytree(conf_path, tmp_backup_path)
+            tmp_props_path = path_join(tmp_backup_path, 'redis.properties')
+            editor.edit(tmp_props_path, syntax='sh')
+            meta += DeployUtil().get_meta_from_props(tmp_props_path)
+            hosts = config.get_props(tmp_props_path, 'sr2_redis_master_hosts')
+    else:
+        props_dict = ask_util.props(cluster_id, save=history_save)
+        hosts = props_dict['hosts']
+        meta += DeployUtil().get_meta_from_dict(props_dict)
     utils.print_table(meta)
+
     msg = [
         'Do you want to proceed with the deploy ',
         'accroding to the above information?',
     ]
-    yes = askBool(''.join(msg), ['y', 'n'])
+    yes = askBool(''.join(msg))
     if not yes:
         logger.info("Cancel deploy.")
         return
 
     # check node status
-    logger.info('Check status of nodes...')
-    success = Center().check_include_localhost(nodes)
+    logger.info('Check status of hosts...')
+    success = Center().check_hosts_connection(hosts, True)
     if not success:
-        logger.error('Must include local node')
+        logger.error('There are unavailable host')
         return
-    success, msg = Center().check_node_connection(nodes, True)
-    logger.debug(msg)
+    logger.debug('Connection of all hosts ok')
+    success = Center().check_include_localhost(hosts)
     if not success:
-        msg = [
-            'Cannot continue for the following reasons: ',
-            msg,
-        ]
-        logger.error(''.join(msg))
+        logger.error('Must include localhost')
         return
 
-    # delete legacy
-    logger.info('Delete legacy...')
-    for node in nodes:
-        if DeployUtil().is_pending(cluster_id, node):
-            home_path = net.get_home_path(node)
-            path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
-            cluster_path = path_of_fb['cluster_path']
-            client = get_ssh(node)
-            if not client:
-                logger.error("ssh connection fail: '{}'".format(node))
-                return
+    # if pending, delete legacy on each hosts
+    for host in hosts:
+        if DeployUtil().get_state(cluster_id, host) == PENDING:
+            client = get_ssh(host)
             command = 'rm -rf {}'.format(cluster_path)
             ssh_execute(client=client, command=command)
             client.close()
 
+    # added_hosts = post_hosts - pre_hosts
+    logger.info('Checking for cluster exist...')
+    meta = [['HOST', 'STATUS']]
+    added_hosts = set(hosts)
+    if deploy_state == DEPLOYED:
+        pre_hosts = config.get_props(props_path, 'sr2_redis_master_hosts')
+        added_hosts -= set(pre_hosts)
+    can_deploy = True
+    for host in added_hosts:
+        client = get_ssh(host)
+        if net.is_exist(client, cluster_path):
+            meta.append([host, color.red('CLUSTER EXIST')])
+            can_deploy = False
+            continue
+        meta.append([host, color.green('CLEAN')])
+    utils.print_table(meta)
+    if not can_deploy:
+        logger.error('Cluster information exist on some hosts.')
+        return
+        # if not force:
+        #     logger.error("If you trying to force, use option '--force'")
+        #     return
+
     # backup conf
-    if restore_yes:
+    if deploy_state == DEPLOYED:
         Center().conf_backup(local_ip, cluster_id, conf_backup_dir)
 
     # backup cluster
-    logger.info('Cluster backup...')
-    for node in backup_nodes:
-        home_path = net.get_home_path(node)
-        path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
+    backup_hosts = []
+    if deploy_state == DEPLOYED:
+        backup_hosts += set(pre_hosts)
+    # if force:
+    #     backup_hosts += added_hosts
+    for host in backup_hosts:
         cluster_path = path_of_fb['cluster_path']
-        client = get_ssh(node)
-        if not client:
-            logger.warn("Connection fail: '{}'".format(node))
-            continue
-        if net.is_exist(client, cluster_path):
-            Center().cluster_backup(node, cluster_id, cluster_backup_dir)
+        client = get_ssh(host)
+        Center().cluster_backup(host, cluster_id, cluster_backup_dir)
+        client.close()
 
-    # check cluster exist
-    logger.info('Check lagacy...')
-    meta = [['NODE', 'STATUS']]
-    for node in nodes:
-        can_deploy = True
-        home_path = net.get_home_path(node)
-        path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
-        cluster_path = path_of_fb['cluster_path']
-        client = get_ssh(node)
-        if not client:
-            logger.error("ssh connection fail: '{}'".format(node))
-            return
-        if net.is_exist(client, cluster_path):
-            meta.append([node, color.red('CLUSTER EXIST')])
-            can_deploy = False
-            continue
-        meta.append([node, color.green('OK')])
-    if not can_deploy:
-        logger.error('Cluster information exists on some nodes.')
-        utils.print_table(meta)
-        if not force:
-            logger.error("If you trying to force, use option '--force'")
-            return
-    if force:
-        for node in nodes:
-            home_path = net.get_home_path(node)
-            path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
-            cluster_path = path_of_fb['cluster_path']
-            client = get_ssh(node)
-            if not client:
-                logger.warn("Connection fail: '{}'".format(node))
-                continue
-            if net.is_exist(client, cluster_path):
-                Center().cluster_backup(node, cluster_id, cluster_backup_dir)
-
-    # install
+    # transfer & install
     logger.info('Transfer installer and execute...')
-    for node in nodes:
-        logger.info(node)
-        home_path = net.get_home_path(node)
-        path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
-        cluster_path = path_of_fb['cluster_path']
-        client = get_ssh(node)
-        if not client:
-            logger.error("ssh connection fail: '{}'".format(node))
-            return
+    for host in hosts:
+        logger.info(host)
+        client = get_ssh(host)
         cmd = 'mkdir -p {0} && touch {0}/.deploy.state'.format(cluster_path)
         ssh_execute(client=client, command=cmd)
         client.close()
+        DeployUtil().transfer_installer(host, cluster_id, installer_path)
+        DeployUtil().install(host, cluster_id, installer_name)
 
-        DeployUtil().transfer_installer(node, cluster_id, installer_path)
-        DeployUtil().install(node, cluster_id, os.path.basename(installer_path))
-
-    # set props
-    if not restore_yes:
-        logger.info('Set conf...')
-        path_of_fb = config.get_path_of_fb(cluster_id)
-        conf_path = path_of_fb['conf_path']
-        props_path = path_of_fb['redis_properties']
-
+    # setup props
+    if deploy_state == DEPLOYED:
+        if restore_yes:
+            tag = conf_backup_dir
+        else:
+            tag = tmp_backup_dir
+        Center().conf_restore(local_ip, cluster_id, tag)
+    else:
         key = 'sr2_redis_master_hosts'
         config.make_key_enable(props_path, key)
-        config.set_props(props_path, key, nodes)
+        config.set_props(props_path, key, props_dict['hosts'])
 
         key = 'sr2_redis_master_ports'
         config.make_key_enable(props_path, key)
-        value = cluster_util.convert_list_2_seq(m_ports)
+        value = cluster_util.convert_list_2_seq(props_dict['master_ports'])
         config.set_props(props_path, key, value)
 
         key = 'sr2_redis_slave_hosts'
         config.make_key_enable(props_path, key)
-        config.set_props(props_path, key, nodes)
+        config.set_props(props_path, key, props_dict['hosts'])
         config.make_key_disable(props_path, key)
 
-        if replicas > 0:
+        if props_dict['replicas'] > 0:
             key = 'sr2_redis_slave_hosts'
             config.make_key_enable(props_path, key)
 
             key = 'sr2_redis_slave_ports'
             config.make_key_enable(props_path, key)
-            value = cluster_util.convert_list_2_seq(s_ports)
+            value = cluster_util.convert_list_2_seq(props_dict['slave_ports'])
             config.set_props(props_path, key, value)
 
         key = 'ssd_count'
         config.make_key_enable(props_path, key)
-        config.set_props(props_path, key, int(ssd_count))
+        config.set_props(props_path, key, props_dict['ssd_count'])
 
         key = 'sr2_redis_data'
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_disable(props_path, key)
-        config.set_props(props_path, key, prefix_of_rdp)
+        config.set_props(props_path, key, props_dict['prefix_of_rdp'])
 
         key = 'sr2_redis_db_path'
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_disable(props_path, key)
-        config.set_props(props_path, key, prefix_of_rdbp)
+        config.set_props(props_path, key, props_dict['prefix_of_rdbp'])
 
         key = 'sr2_flash_db_path'
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_disable(props_path, key)
-        config.set_props(props_path, key, prefix_of_fdbp)
+        config.set_props(props_path, key, props_dict['prefix_of_fdbp'])
 
-        conf_path = path_of_fb['conf_path']
-    else:
-        logger.info('Restore conf...')
-        Center().conf_restore(local_ip, cluster_id, conf_backup_dir)
-        path_of_fb = config.get_path_of_fb(cluster_id)
-        conf_path = path_of_fb['conf_path']
-        props_path = path_of_fb['redis_properties']
-
-        key = 'sr2_redis_master_hosts'
-        config.make_key_enable(props_path, key)
-        config.set_props(props_path, key, nodes)
-        key = 'sr2_redis_slave_hosts'
-        config.make_key_enable(props_path, key)
-        config.set_props(props_path, key, nodes)
-
+    # synk props
     logger.info('Sync conf...')
-    for node in nodes:
-        if socket.gethostbyname(node) in [local_ip, '127.0.0.1']:
+    for node in hosts:
+        if socket.gethostbyname(node) in config.get_local_ip_list():
             continue
         client = get_ssh(node)
         if not client:
@@ -356,17 +321,15 @@ def run_deploy(cluster_id=None, history_save=True, force=False):
         client.close()
 
     # set deploy state complete
-    for node in nodes:
+    if os.path.exists(tmp_backup_path):
+        shutil.rmtree(tmp_backup_path)
+    for node in hosts:
         home_path = net.get_home_path(node)
         if not home_path:
             return
-        home_path = net.get_home_path(node)
-        path_of_fb = config.get_path_of_fb(cluster_id, home_path=home_path)
+        path_of_fb = config.get_path_of_fb(cluster_id)
         cluster_path = path_of_fb['cluster_path']
         client = get_ssh(node)
-        if not client:
-            logger.error("ssh connection fail: '{}'".format(node))
-            return
         command = 'rm -rf {}'.format(path_join(cluster_path, '.deploy.state'))
         ssh_execute(client=client, command=command)
         client.close()
@@ -606,19 +569,34 @@ def _handle(text):
         fire.Fire(
             component=Command,
             command=text)
-    except KeyboardInterrupt as e:
-        logger.warning('\b\bKeyboardInterrupt')
-    except KeyError as e:
+    except KeyboardInterrupt:
+        logger.warning('\b\bCanceled')
+    except KeyError as ex:
         logger.warn('[%s] command fail' % text)
-        logger.exception(e)
-    except TypeError as e:
-        logger.exception(e)
-    except CommandError as e:
-        logger.exception(e)
-    except FireExit as e:
+        logger.exception(ex)
+    except TypeError as ex:
+        logger.exception(ex)
+    except IOError as ex:
+        if ex.errno == 2:
+            logger.error("{}: '{}'".format('FileNotExistError', ex.filename))
+        else:
+            raise IOError(ex)
+    except EOFError:
+        logger.warning('\b\bCanceled')
+    except CommandError as ex:
+        logger.exception(ex)
+    except FireExit as ex:
         pass
-        # if e.code is not 0:
-        #     logger.exception(e)
+    except (
+            PropsKeyError,
+            HostNameError,
+            HostConnectionError,
+            SSHConnectionError,
+            FileNotExistError,
+            YamlSyntaxError,
+            PropsSyntaxError,
+    ) as ex:
+        logger.error('{}: {}'.format(ex.class_name(), str(ex)))
     except BaseException as ex:
         logger.exception(ex)
 

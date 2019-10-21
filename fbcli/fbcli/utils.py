@@ -12,6 +12,7 @@ from terminaltables import AsciiTable
 import config
 import editor
 from log import logger
+from exceptions import ConvertError
 
 
 class TermColor:
@@ -295,3 +296,33 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{ld_library_path} ; \
 export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:{dyld_library_path}''' \
         .format(**envs)
     return cmd
+
+
+def convert_list_2_hyphen(ports):
+    '''
+    converted as shown below
+    [1, 2, 3, 5, 7, 8, 10]
+    =>
+    ['1-3', '5', '7-8', 10]
+    '''
+    logger.debug('ports: {}'.format(ports))
+    ret = []
+    s = ports[0]
+    pre = ports[0] - 1
+    try:
+        for port in ports:
+            if pre != port - 1:
+                if s != pre:
+                    ret.append('{}-{}'.format(s, pre))
+                else:
+                    ret.append(str(s))
+                s = port
+            pre = port
+        if s != pre:
+            ret.append('{}-{}'.format(s, pre))
+        else:
+            ret.append(str(s))
+        logger.debug('converted: {}'.format(ret))
+        return ret
+    except Exception:
+        raise ConvertError("Invalid ports: '{}'".format(ports))

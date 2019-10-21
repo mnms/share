@@ -14,6 +14,7 @@ from redistrib2.exceptions import RedisIOError
 
 import utils
 from log import logger
+from exceptions import SSHConnectionError, HostConnectionError, HostNameError
 
 
 def get_ssh(host, port=22):
@@ -31,10 +32,12 @@ def get_ssh(host, port=22):
         client.hostname = host
         client.port = port
         return client
-    except  paramiko.ssh_exception.NoValidConnectionsError as e:
-        return None
-    except Exception as e:
-        logger.debug(e)
+    except paramiko.ssh_exception.NoValidConnectionsError:
+        raise HostConnectionError(host)
+    except paramiko.ssh_exception.AuthenticationException:
+        raise SSHConnectionError(host)
+    except socket.gaierror:
+        raise HostNameError(host)
 
 
 def get_sftp(client):
@@ -213,15 +216,15 @@ def get_home_path(host):
     _, stdout, _ = ssh_execute(client, command)
     client.close()
     return stdout.strip()
-    
 
-def ping(host, time=3):
-    command = 'ping -c 1 -t {} {} > /dev/null 2>&1'.format(time, host)
+
+def ping(host, duration=3):
+    command = 'ping -c 1 -t {} {} > /dev/null 2>&1'.format(duration, host)
     response = os.system(command)
+    print(response)
     logger.debug('ping to {}, respose: {}'.format(host, response))
-    if response is 0:
-        return True
-    return False
+    if response is not 0:
+        raise HostConnectionError(host, status_code=response)
 
 
 def is_port_empty(host, port):
@@ -245,3 +248,11 @@ def is_port_empty(host, port):
         logger.exception(e)
     finally:
         return result, status
+
+
+def get_ip(host):
+    try:
+        ip = socket.gethostbyname(host)
+    except socket.gaierror:
+        raise HostNameError(host)
+    return ip

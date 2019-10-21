@@ -5,19 +5,21 @@ import os
 from threading import Thread
 import socket
 
-import config
 from config import get_env_dict
+import config
 from log import logger
 from net import get_ssh, ssh_execute, get_home_path, get_sftp
 import net
 from rediscli_util import RedisCliUtil
 from redistrib2 import command as trib
-from utils import get_ip_port_tuple_list, make_export_envs, TermColor
+from utils import get_ip_port_tuple_list, make_export_envs
 from deploy_util import DeployUtil
 from terminaltables import AsciiTable
 import ask_util
 import color
 from hiredis import ProtocolError
+from exceptions import SSHConnectionError, HostConnectionError, HostNameError
+import color
 
 
 def get_ps_list_command(port_list):
@@ -87,18 +89,17 @@ class Center(object):
 
     def conf_backup(self, host, cluster_id, tag):
         logger.info('Backup conf of cluster {}...'.format(cluster_id))
-        # pre-prepare
-        home_path = get_home_path(host)
-        path_of_fb = config.get_path_of_fb(cluster_id, home_path)
+        # prepare
+        path_of_fb = config.get_path_of_fb(cluster_id)
         conf_path = path_of_fb['conf_path']
-        path_of_cli = config.get_path_of_cli()
+        path_of_cli = config.get_path_of_cli(cluster_id)
         conf_backup_path = path_of_cli['conf_backup_path']
         conf_backup_tag_path = path_join(conf_backup_path, tag)
 
         if not os.path.isdir(conf_backup_path):
             os.mkdir(conf_backup_path)
 
-        # back up conf 
+        # back up conf
         os.mkdir(conf_backup_tag_path)
         client = get_ssh(host)
         net.copy_dir_from_remote(client, conf_path, conf_backup_tag_path)
@@ -107,10 +108,9 @@ class Center(object):
         logger.info('OK, {}'.format(tag))
 
     def cluster_backup(self, host, cluster_id, tag):
-        logger.info('Backup info of cluster {} at {}...'.format(cluster_id, host))
-        # pre-prepare
-        home_path = get_home_path(host)
-        path_of_fb = config.get_path_of_fb(cluster_id, home_path)
+        logger.info('Backup cluster {} at {}...'.format(cluster_id, host))
+        # prepare
+        path_of_fb = config.get_path_of_fb(cluster_id)
         cluster_path = path_of_fb['cluster_path']
         cluster_backup_path = path_of_fb['cluster_backup_path']
         cluster_backup_tag_path = path_join(cluster_backup_path, tag)
@@ -128,10 +128,9 @@ class Center(object):
 
     def conf_restore(self, host, cluster_id, tag):
         logger.debug('Restore conf to cluster {}...'.format(cluster_id))
-        # pre-prepare
-        home_path = get_home_path(host)
-        path_of_fb = config.get_path_of_fb(cluster_id, home_path)
-        path_of_cli = config.get_path_of_cli()
+        # prepare
+        path_of_fb = config.get_path_of_fb(cluster_id)
+        path_of_cli = config.get_path_of_cli(cluster_id)
         conf_path = path_of_fb['conf_path']
         conf_backup_path = path_of_cli['conf_backup_path']
         conf_backup_tag_path = path_join(conf_backup_path, tag)
@@ -231,7 +230,7 @@ class Center(object):
         logger.info('create cluster complete.')
 
     def confirm_node_port_info(self):
-        meta = [['NODE', 'PORT', 'TYPE']]
+        meta = [['HOST', 'PORT', 'TYPE']]
         for node in self.master_ip_list:
             for port in self.master_port_list:
                 meta.append([node, port, 'MASTER'])
@@ -250,7 +249,7 @@ class Center(object):
     def check_port_available(self):
         all_enable = True
         logger.info('Check status of ports for master...')
-        meta = [['NODE', 'PORT', 'STATUS']]
+        meta = [['HOST', 'PORT', 'STATUS']]
         for node in self.master_ip_list:
             for port in self.master_port_list:
                 result, status = net.is_port_empty(node, port)
@@ -264,7 +263,7 @@ class Center(object):
 
         if self.slave_ip_list:
             logger.info('Check status of ports for slave...')
-            meta = [['NODE', 'PORT', 'STATUS']]
+            meta = [['HOST', 'PORT', 'STATUS']]
             for node in self.slave_ip_list:
                 for port in self.slave_port_list:
                     result, status = net.is_port_empty(node, port)
@@ -387,51 +386,42 @@ class Center(object):
         self._rm_nodes_conf(ip_list, master_port_list, slave_port_list)
         logger.info('clean complete')
 
-    def check_node_connection(self, nodes, show_result=False):
-        ip_list = []
-        node_status = []
-        for node in nodes:
+    def check_hosts_connection(self, hosts, show_result=False):
+        host_status = []
+        success_count = 0
+        for host in hosts:
             try:
-                ip = socket.gethostbyname(node)
-            except socket.gaierror:
-                node_status.append([node, TermColor.fail('UNKNOWN HOST')])
-                logger.debug('{} connection... FAIL'.format(node))
-                continue
-            response = net.ping(node)
-            if not response:
-                node_status.append([node, TermColor.fail('CONNECTION FAIL')])
-                logger.debug('{} connection... FAIL'.format(node))
-                continue
-            logger.debug('{} connection... OK'.format(node))
-            client = get_ssh(node)
-            if not client:
-                node_status.append([node, TermColor.fail('SSH FAIL')])
-                logger.debug('{} ssh... FAIL'.format(node))
-                continue
-            logger.debug('{} ssh... OK'.format(node))
-            client.close()
-            ip_list.append(ip)
-            node_status.append([node, TermColor.green('OK')])
-
+                client = get_ssh(host)
+                client.close()
+                logger.debug('{} ssh... OK'.format(host))
+                success_count += 1
+                host_status.append([host, color.green('OK')])
+            except HostNameError:
+                host_status.append([host, color.red('UNKNOWN HOST')])
+                logger.debug('{} gethostbyname... FAIL'.format(host))
+            except HostConnectionError:
+                host_status.append([host, color.red('CONNECTION FAIL')])
+                logger.debug('{} connection... FAIL'.format(host))
+            except SSHConnectionError:
+                host_status.append([host, color.red('SSH FAIL')])
+                logger.debug('{} ssh... FAIL'.format(host))
         if show_result:
-            table = AsciiTable([['NODE', 'STATUS']] + node_status)
+            table = AsciiTable([['HOST', 'STATUS']] + host_status)
             print(table.table)
-        if len(nodes) != len(ip_list):
-            return False, 'There are unavailable nodes'
-        return True, 'All nodes available'
-    
-    def check_include_localhost(self, nodes):
-        local_ip_list = config.get_local_ip_list()
-        local_ok = False
-        for node in nodes:
+        if len(hosts) != success_count:
+            return False
+        return True
+
+    def check_include_localhost(self, hosts):
+        logger.debug('Check include localhost')
+        for host in hosts:
             try:
-                ip = socket.gethostbyname(node)
-                if ip in local_ip_list:
-                    local_ok = True
-            except Exception as e:
-                logger.debug(e)
-                return False
-        return local_ok
+                ip_addr = socket.gethostbyname(host)
+                if ip_addr in [config.get_local_ip(), '127.0.0.1']:
+                    return True
+            except socket.gaierror:
+                raise HostNameError(host)
+        return False
 
     def __append_conf(self, ip, port_list, remove_dirs):
         for port in port_list:
