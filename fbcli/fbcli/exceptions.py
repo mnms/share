@@ -29,8 +29,12 @@ class PropsKeyError(FbcliBaseError):
 
 
 class FileNotExistError(FbcliBaseError):
-    def __init__(self, file_path, *args):
-        FbcliBaseError.__init__(self, "'{}'".format(file_path), *args)
+    def __init__(self, file_path, **kwargs):
+        message = "'{}'".format(file_path)
+        if 'host' in kwargs.keys():
+            host = kwargs['host']
+            message = "'{}' at '{}'".format(file_path, host)
+        FbcliBaseError.__init__(self, message, *kwargs)
 
 
 class SSHConnectionError(FbcliBaseError):
@@ -59,4 +63,12 @@ class YamlSyntaxError(FbcliBaseError):
 class PropsSyntaxError(FbcliBaseError):
     def __init__(self, line, line_number, *args):
         message = "'{}' at line {}".format(line, line_number)
+        FbcliBaseError.__init__(self, message, *args)
+class SSHCommandError(FbcliBaseError):
+    def __init__(self, exit_status, host, command, *args):
+        message = "[ExitCode {}] Fail execute command at '{}': {}".format(
+            exit_status,
+            host,
+            command,
+        )
         FbcliBaseError.__init__(self, message, *args)

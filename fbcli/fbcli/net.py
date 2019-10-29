@@ -6,15 +6,22 @@ import time
 from threading import Thread
 from os.path import join as path_join
 import os
+import sys
+import shutil
 
 import paramiko
-import hiredis
+import requests
 from redistrib2 import command as trib
 from redistrib2.exceptions import RedisIOError
 
 import utils
 from log import logger
-from exceptions import SSHConnectionError, HostConnectionError, HostNameError
+from exceptions import (
+    SSHConnectionError,
+    HostConnectionError,
+    HostNameError,
+    SSHCommandError,
+)
 
 
 def get_ssh(host, port=22):
@@ -129,12 +136,7 @@ def ssh_execute(client, command, allow_status=[0]):
 
     exit_status = stdout.channel.recv_exit_status()
     if exit_status not in allow_status:
-        # raise error
-        raise utils.CommandError(
-            exit_status=exit_status,
-            command=command,
-            hostname=client.hostname,
-            port=client.port)
+        raise SSHCommandError(exit_status, client.hostname, command)
     return exit_status, stdout_msg, stderr_msg
 
 
@@ -171,7 +173,10 @@ def copy_dir_to_remote(client, local_path, remote_path):
     :param local_path: absolute path of file
     :param remote_path: absolute path of file
     """
-    logger.debug('copy FROM localhost:{} TO node:{}'.format(local_path, remote_path))
+    logger.debug('copy FROM localhost:{} TO node:{}'.format(
+        local_path,
+        remote_path
+    ))
     sftp = get_sftp(client)
     listdir = os.listdir(local_path)
     for f in listdir:
@@ -256,3 +261,46 @@ def get_ip(host):
     except socket.gaierror:
         raise HostNameError(host)
     return ip
+
+
+def download_file(url, file_path):
+    download_path = file_path + '.download'
+    file_name = os.path.basename(file_path)
+    try:
+        with open(download_path, 'wb') as f:
+            logger.info('Downloading {}'.format(file_name))
+            logger.debug('url: {}'.format(url))
+            logger.debug('installer name: {}'.format(file_name))
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            total_length = response.headers.get('content-length')
+            if total_length is None:
+                f.write(response.content)
+            else:
+                done_length = 0
+                total_length = int(total_length)
+                for data in response.iter_content(chunk_size=4096):
+                    done_length += len(data)
+                    f.write(data)
+                    done = int(100 * done_length / total_length)
+                    comp = '=' * (done / 2)
+                    remain = ' ' * (50 - (done / 2))
+                    progress = '\r[{}{}] {}%'.format(comp, remain, done)
+                    sys.stdout.write(progress)
+                    sys.stdout.flush()
+            print('')
+            shutil.move(download_path, file_path)
+            return True
+    except requests.exceptions.HTTPError as ex:
+        logger.warning(ex)
+        return False
+    except KeyboardInterrupt as ex:
+        print('')
+        raise ex
+    except BaseException as ex:
+        class_name = ex.__class__.__name__
+        logger.warning('{}: {}'.format(class_name, url))
+        return False
+    finally:
+        if os.path.isfile(download_path):
+            os.remove(download_path)

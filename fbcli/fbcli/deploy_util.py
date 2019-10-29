@@ -11,6 +11,7 @@ from rsync_over_sftp import RsyncOverSftp
 from utils import convert_list_2_hyphen
 import config
 import net
+from exceptions import FileNotExistError
 
 
 CLEAN = 101
@@ -54,6 +55,9 @@ class DeployUtil(object):
         client = get_ssh(host)
         sftp = get_sftp(client)
 
+        if not net.is_exist(client, installer_path):
+            raise FileNotExistError(installer_path)
+
         if not net.is_dir(client, path_of_fb['release_path']):
             logger.debug("Not exist releases directory at '{}'".format(host))
             sftp.mkdir(path_of_fb['release_path'])
@@ -82,6 +86,8 @@ class DeployUtil(object):
             PATH=${{PATH}}:/usr/sbin; \
             {0} --full {1}'''.format(installer_path, cluster_path)
         client = get_ssh(host)
+        if not net.is_exist(client, installer_path):
+            raise FileNotExistError(installer_path, host=host)
         ssh_execute(client=client, command=command)
         client.close()
         logger.debug('OK')

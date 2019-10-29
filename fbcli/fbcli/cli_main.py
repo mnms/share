@@ -51,6 +51,7 @@ from exceptions import (
     FileNotExistError,
     YamlSyntaxError,
     PropsSyntaxError,
+    SSHCommandError,
 )
 
 
@@ -185,7 +186,6 @@ def _deploy(cluster_id, history_save):
         return
 
     # check node status
-    logger.info('Check status of hosts...')
     success = Center().check_hosts_connection(hosts, True)
     if not success:
         logger.error('There are unavailable host')
@@ -246,13 +246,19 @@ def _deploy(cluster_id, history_save):
     # transfer & install
     logger.info('Transfer installer and execute...')
     for host in hosts:
-        logger.info(host)
+        logger.info(' - {}'.format(host))
         client = get_ssh(host)
         cmd = 'mkdir -p {0} && touch {0}/.deploy.state'.format(cluster_path)
         ssh_execute(client=client, command=cmd)
         client.close()
         DeployUtil().transfer_installer(host, cluster_id, installer_path)
-        DeployUtil().install(host, cluster_id, installer_name)
+        try:
+            DeployUtil().install(host, cluster_id, installer_name)
+        except SSHCommandError as ex:
+            msg = "Fail to execute installer '{}'".format(installer_path)
+            logger.error(msg)
+            logger.exception(ex)
+            return
 
     # setup props
     if deploy_state == DEPLOYED:
@@ -593,6 +599,7 @@ def _handle(text):
             FileNotExistError,
             YamlSyntaxError,
             PropsSyntaxError,
+            SSHCommandError,
     ) as ex:
         logger.error('{}: {}'.format(ex.class_name(), str(ex)))
     except BaseException as ex:

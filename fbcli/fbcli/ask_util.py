@@ -6,6 +6,7 @@ from ask import askBool, askInt, askPassword, ask
 
 from log import logger
 import config
+import net
 
 START_PORT = 18000
 MASTER_OFFSET = 100
@@ -64,6 +65,8 @@ def installer():
         os.mkdir(release_path)
     installer_list = os.listdir(release_path)
     installer_list = list(filter(lambda x: x != '.gitignore', installer_list))
+    pattern = '.download'
+    installer_list = list(filter(lambda x: pattern not in x, installer_list))
     installer_list.sort(reverse=True)
 
     # formatting msg
@@ -75,7 +78,7 @@ def installer():
         '',
         '    [ INSTALLER LIST ]',
         '{}\n'.format('\n'.join(formatted)),
-        'Please enter the number or the path of the installer you want to use',
+        'Please enter the number, file path or url of the installer you want to use.',
         "you can also add file in list by copy to '$FBPATH/releases/'",
     ]
     if not installer_list:
@@ -84,7 +87,7 @@ def installer():
             '',
             '    [ INSTALLER LIST ]',
             '    (empty)\n\n'
-            'Please enter the path of the installer you want to use',
+            'Please enter file path or url of the installer you want to use',
             "you can also add file in list by copy to '$FBPATH/releases/'",
         ]
 
@@ -115,6 +118,16 @@ def installer():
                 ', please try again'
             ]
             logger.error(''.join(msg))
+        elif result.startswith(('http://', 'https://')):
+            # case: type url
+            url = result
+            file_name = url.split('?')[0].split('/')[-1]
+            installer_path = path_join(release_path, file_name)
+            success = net.download_file(url, installer_path)
+            if success:
+                logger.info('OK, {}'.format(file_name))
+                return installer_path
+            logger.error("Fail to download from '{}', try again".format(url))
         else:
             msg = [
                 "Invalid input: '{}', ".format(result),

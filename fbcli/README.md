@@ -17,6 +17,8 @@
 [Logging in file](#logging-in-file)
 
 
+</br>
+</br>
 
 ## Installing Prerequisites
 
@@ -25,6 +27,8 @@
 * Python 2.7
 
 
+</br>
+</br>
 
 ## Fbcli Install
 
@@ -63,6 +67,8 @@ FBPATH: <설치 경로>/fbcli/.flashbase
 PATH: [링크](https://pip.pypa.io/en/stable/user_guide/#user-installs) 참조
 
 
+</br>
+</br>
 
 ## Fbcli 실행하기
 
@@ -73,6 +79,7 @@ $ fbcli
 ```
 
 
+</br>
 
 fbcli 최초접속시 base_directory를 물어봅니다. base_directory는 flashbase의 root path 입니다.
 
@@ -99,6 +106,7 @@ root@flashbase:->
 ```
 
 
+</br>
 
 만약 기존에 flashbase가 운영중인 환경에서 fbcli를 설치하는 경우 `import-conf` 명령어를 사용하세요.
 
@@ -136,6 +144,8 @@ root@flashbase:->
 import가 가능한 cluster가 있는 경우 import 진행 여부를 물어봅니다. `y` 를 선택하는 경우 import가 진행됩니다.
 
 
+</br>
+</br>
 
 ## Deploy
 
@@ -158,6 +168,7 @@ cluster id를 생략하는 경우 현재 접속중인 cluster를 기준으로 �
 현재 입력하는 값이 default value로 저장되지 않도록 하려면 deploy시 `--history-save=False` 옵션을 주세요.
 
 
+</br>
 
 #### installer 선택
 
@@ -169,7 +180,7 @@ Select installer
     (2) tsr2-installer.bin.flashbase_v1.1.09.centos
     (3) tsr2-installer.bin.flashbase_v1.1.08.centos
 
-Please enter the number or the path of the installer you want to use
+Please enter the number, file path or url of the installer you want to use.
 you can also add file in list by copy to '$FBPATH/releases/'
 1
 OK, tsr2-installer.bin.flashbase_v1.1.10.centos
@@ -177,11 +188,21 @@ OK, tsr2-installer.bin.flashbase_v1.1.10.centos
 
 installer를 선택합니다. 목록에 추가하고 싶은 경우  `$FBPATH/releases` 경로 아래에 installer를 복사하세요.
 
-숫자입력을 통해 선택할 수 있으며, 만약 목록 외에서 선택하고 싶다면 installer의 절대경로를 입력하세요. 
+숫자입력을 통해 리스트에서 선택할 수 있으며, 파일의 경로나 url을 통해서도 가능합니다.
 
 ex)  `~/tsr2-installer.bin.flashbase_v1.1.10.centos`
 
+</br>
 
+url 입력 시 아래와 같이 installer 파일 다운로드가 선행됩니다.
+다운로드된 파일은 `$FBPATH/releases` 아래에 저장됩니다.
+
+```
+Downloading tsr2-installer.bin.flashbase_v1.1.10.centos
+[=======                                           ] 15%
+```
+
+</br>
 
 #### host 입력
 
@@ -194,6 +215,7 @@ OK, ['nodeA', 'nodeB', 'nodeC', 'nodeD']
 ip주소 혹은 hostname을 입력합니다. 여러 개를 입력하는 경우 쉼표(,)를 구분자로 사용하세요.
 
 
+</br>
 
 #### master 정보 입력
 
@@ -215,6 +237,7 @@ port 입력은 쉼표(,)를 구분자로 사용하며 범위를 입력하고 싶
 port는 cluster id와 master의 개수를 기반으로 추천해줍니다.
 
 
+</br>
 
 #### slave 정보 입력
 
@@ -234,6 +257,7 @@ port 입력은 쉼표(,)를 구분자로 사용하며 범위를 입력하고 싶
 port는 cluster id와 slave의 개수를 기반으로 추천해줍니다.
 
 
+</br>
 
 #### 그 외 정보 입력
 
@@ -250,6 +274,7 @@ Type prefix of flash_db_path [~/ssd_]
 ```
 
 
+</br>
 
 #### 정보확인
 
@@ -276,6 +301,7 @@ y
 모든 정보입력이 완료되면 위와 같이 입력한 정보들을 확인합니다.
 
 
+</br>
 
 #### Deploy 진행
 
@@ -329,6 +355,7 @@ Save config.yaml from redis.properties
 ```
 
 
+</br>
 
 #### Deploy 진행 중 오류 발생시
 
@@ -354,6 +381,7 @@ There are unavailable host
 `CONNECTION ERROR`: host의 상태 혹은 outbound/inbound 등을 확인하세요.
 
 
+</br>
 
 * ClusterError
 
@@ -377,10 +405,11 @@ deploy가 진행 중 중단되는 경우에는 `CLUSTER EXIST` 가 뜨지 않습
 re-deploy의 경우 새로 추가되는 host만 검사합니다.
 
 
+</br>
 
 * LocalhostIncludeError
 
-* ```
+```
   Check status of hosts...
   +-------+------------------+
   | HOST  | STATUS           |
@@ -390,16 +419,21 @@ re-deploy의 경우 새로 추가되는 host만 검사합니다.
   | nodeD | OK               |
   +-------+------------------+
   Must include localhost
-  ```
+```
 
-deploy 에서 host 정보에 localhost를 포함하지 않는 경우 에러가 발생합니다. `localhost` 혹은 `127.0.0.1` 외에 ip주소나 hostname으로 입력해도 무방합니다.
+deploy 에서 host 정보에 localhost를 포함하지 않는 경우 에러가 발생합니다. 
+
+`localhost` 혹은 `127.0.0.1` 외에 ip주소나 hostname으로 입력해도 무방합니다.
 
 
+</br>
+</br>
 
 ## 클러스터 생성
 
 deploy가 완료되었다면 클러스터 생성을 진행할 수 있습니다.
 
+</br>
 
 #### redis 실행
 
@@ -420,6 +454,7 @@ All redis process up complete
 클러스터를 구성하기 위해서 클러스터를 구성하기 위한 redis들을 먼저 실행시켜야 합니다.
 
 
+</br>
 
 #### 클러스터 구성하기
 
@@ -464,6 +499,7 @@ create cluster complete.
 create를 시작하기 전에 구성정보를 확인하는 절차를 거칩니다.
 
 
+</br>
 
 #### 정보 확인
 
@@ -476,6 +512,7 @@ create를 시작하기 전에 구성정보를 확인하는 절차를 거칩니�
 * `cli cluster nodes `
 
 
+</br>
 
 #### 클러스터 구성 중 오류 발생 시
 
@@ -510,6 +547,7 @@ Node nodeA:21200 is already in a cluster
 해당 redis들을 클러스터에서 강제로 해제시킨 후 구성하려면 `cluster restart --force --reset` 을 사용하세요.
 
 
+</br>
 
 * Connection Error
 
@@ -541,13 +579,15 @@ nodeD:21200 - [Errno 111] Connection refused
 
 
 
-
+</br>
+</br>
 
 ## Flashbase Version Update
 
 flashbase version의 변경은 `deploy` 명령어를 통해 진행할 수 있습니다.
 
 
+</br>
 
 #### Deploy
 
@@ -565,6 +605,7 @@ y
 > ```
 
 
+</br>
 
 #### Installer
 
@@ -576,13 +617,15 @@ Select installer
     (2) tsr2-installer.bin.flashbase_v1.1.09.centos
     (3) tsr2-installer.bin.flashbase_v1.1.08.centos
 
-Please enter the number or the path of the installer you want to use
-1
+Please enter the number, file path or url of the installer you want to use.
+you can also add file in list by copy to '$FBPATH/releases/'
 ```
 
+installer를 선택하거나 파일경로 혹은 url을 입력하세요.
 
 
 
+</br>
 
 #### Restore
 
@@ -594,6 +637,7 @@ y
 현재 설정값을 그대로 사용할 것인지 물어봅니다. `y` 를 선택해주세요.
 
 
+</br>
 
 #### 정보확인 및 진행
 
@@ -651,11 +695,12 @@ root@flashbase:32>
 
 정보확인 후 클러스터와 conf의 백업과 함께 update가 진행됩니다.
 
-클러스터 백업 경로: `<base_directory>/backup/cluster_<cluster_id>_bak_<time_stamp>`
+클러스터 백업 경로: `<base-directory>/backup/cluster_<cluster-id>_bak_<time-stamp>`
 
-conf 백업 경로: `$FBAPTH/conf_backup/cluster_<cluster_id>_conf_bak_<time_stamp>`
+conf 백업 경로: `$FBAPTH/conf_backup/cluster_<cluster-id>_conf_bak_<time-stamp>`
 
 
+</br>
 
 #### restart
 
@@ -666,12 +711,15 @@ root@flashbase:32> cluster restart
 `cluster restart` 를 통해 재시작을 해주면 완료됩니다.
 
 
+</br>
+</br>
 
 ## Re-Deploy
 
 deploy가 완료된 클러스터에서 `deploy` 명령어를 통해 다시 진행할 수 있습니다.
 
 
+</br>
 
 #### Deploy
 
@@ -689,6 +737,7 @@ y
 > ```
 
 
+</br>
 
 #### Installer
 
@@ -700,15 +749,16 @@ Select installer
     (2) tsr2-installer.bin.flashbase_v1.1.09.centos
     (3) tsr2-installer.bin.flashbase_v1.1.08.centos
 
-Please enter the number or the path of the installer you want to use
-1
+Please enter the number, file path or url of the installer you want to use.
+you can also add file in list by copy to '$FBPATH/releases/'
 ```
 
-다시 설치할 flashbase의 version에 해당하는 installer를 선택해주세요.
+다시 설치할 flashbase의 installer를 선택해주세요.
 
-변경하지 않는 경우 기존에 사용한 installer를 선택하시면 됩니다.
+변경하지 않는 경우 기존에 사용했던 installer를 선택하시면 됩니다.
 
 
+</br>
 
 #### Restore
 
@@ -720,6 +770,7 @@ n
 현재 설정값을 그대로 사용할 것인지 물어봅니다. 정보변경을 위해 `n` 을 선택합니다.
 
 
+</br>
 
 #### Setup Info
 
@@ -768,6 +819,7 @@ y
 ```
 
 
+</br>
 
 #### 정보확인 및 진행
 
@@ -816,14 +868,16 @@ root@flashbase:32>
 
 정보확인 후 클러스터와 conf의 백업과 함께 update가 진행됩니다.
 
-클러스터 백업 경로: `<base_directory>/backup/cluster_<cluster_id>_bak_<time_stamp>`
+클러스터 백업 경로: `<base-directory>/backup/cluster_<cluster-id>_bak_<time-stamp>`
 
-conf 백업 경로: `$FBAPTH/conf_backup/cluster_<cluster_id>_conf_bak_<time_stamp>`
+conf 백업 경로: `$FBAPTH/conf_backup/cluster_<cluster-id>_conf_bak_<time-stamp>`
 
 
+</br>
+</br>
 
 ## Logging in file
 
 `fbcli/logs/fb-roate.log` 에 debug 수준의 로그가 저장됩니다.
 
-최대 1Gi만큼 저장하며 초과하는 경우 최신순으로 rolling update가 진행됩니다.
+최대 1GiB 만큼 저장하며 초과하는 경우 최신순으로 rolling update가 진행됩니다.
