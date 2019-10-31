@@ -118,5 +118,10 @@ class RedisCliConfig(object):
                 port=port)
         if save:
             RedisCliUtil.save_redis_template_config(key, value)
-            cluster_util.rsync_fb_conf()
-            Center().update_redis_conf()
+            center = Center()
+            center.update_ip_port()
+            success = center.check_hosts_connection()
+            if not success:
+                return
+            center.configure_redis()
+            center.sync_conf()

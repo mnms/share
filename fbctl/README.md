@@ -435,6 +435,16 @@ deploy가 완료되었다면 클러스터 생성을 진행할 수 있습니다.
 
 </br>
 
+#### redis conf 생성
+
+```
+root@flashbase:32> cluster configure
+```
+
+`redis-<master/slave>.conf.template` 와 `redis.properties` 를 이용해 `redis-<port>.conf` 파일들을 생성합니다.  
+
+</br>
+
 #### redis 실행
 
 ```
@@ -878,6 +888,6 @@ conf 백업 경로: `$FBAPTH/conf_backup/cluster_<cluster-id>_conf_bak_<time-sta
 
 ## Logging in file
 
-`fbcli/logs/fb-roate.log` 에 debug 수준의 로그가 저장됩니다.
+`$FBPATH/logs/fb-roate.log` 에 debug 수준의 로그가 저장됩니다.
 
 최대 1GiB 만큼 저장하며 초과하는 경우 최신순으로 rolling update가 진행됩니다.

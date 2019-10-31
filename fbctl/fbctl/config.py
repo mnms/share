@@ -9,7 +9,15 @@ import shutil
 import yaml
 
 from log import logger
-from exceptions import FileNotExistError, YamlSyntaxError, PropsSyntaxError
+from exceptions import (
+    FileNotExistError,
+    YamlSyntaxError,
+    PropsSyntaxError,
+    ClusterIdError,
+    ClusterNotExistError,
+    PropsError,
+    PropsKeyError,
+)
 
 # start_port = 18000
 
@@ -29,12 +37,12 @@ def get_local_ip_list():
 
 def get_root_of_cli_config():
     if 'FBPATH' not in os.environ:
-        p = os.path.dirname(os.path.realpath(__file__))
-        p = os.path.dirname(p)
-        p = os.path.join(p, '.flashbase')
-        logger.error('''You should set FBPATH in env
-        ex)
-        export FBPATH={}'''.format(p))
+        msg = [
+            'To start using fbctl, you should set env FBPATH',
+            'ex)',
+            'export FBPATH=$HOME/.flashbase'
+        ]
+        logger.error('\n'.join(msg))
         exit(1)
     p = os.environ['FBPATH']
     if not os.path.exists(p):
@@ -42,20 +50,36 @@ def get_root_of_cli_config():
     return os.environ['FBPATH']
 
 
-def get_cur_cluster_id():
+def get_cur_cluster_id(allow_empty_id=False):
     """Get cur cluster id
 
     :return: cluster #
     """
     root_of_cli_config = get_root_of_cli_config()
     head_path = path_join(root_of_cli_config, 'HEAD')
-    cluster_id = -1
     if not os.path.exists(head_path):
         with open(head_path, 'w') as fd:
-            fd.writelines(str(cluster_id))
+            fd.writelines(str(-1))
     with open(head_path, 'r') as fd:
-        l = fd.readline()
-        cluster_id = int(l)
+        line = fd.readline().strip()
+        cluster_id = line
+    if line == '-1' and allow_empty_id:
+        return -1
+    if not line.decode('utf-8').isdecimal():
+        raise ClusterIdError(cluster_id)
+    cluster_id = int(cluster_id)
+    base_directory = get_base_directory()
+    buf = os.listdir(base_directory)
+    buf = filter(lambda x: x.startswith('cluster_'), buf)
+    buf = map(lambda x: int(x[8:]), buf)
+    cluster_list = []
+    for cid in buf:
+        cluster_dir = 'cluster_{}'.format(cid)
+        cluster_path = os.path.join(base_directory, cluster_dir)
+        if not os.path.isfile(os.path.join(cluster_path, '.deploy.state')):
+            cluster_list.append(int(cid))
+    if cluster_id not in cluster_list:
+        raise ClusterNotExistError(cluster_id)
     return cluster_id
 
 
@@ -96,7 +120,7 @@ def get_config(cluster_id=-1, template=False):
         cur_cluster_path = get_repo_cluster_path(cluster_id)
     yml_path = path_join(cur_cluster_path, 'config.yaml')
     with open(yml_path, 'r') as fd:
-        fb_config = yaml.load(fd)
+        fb_config = yaml.safe_load(fd)
         return fb_config
     assert False
     return None
@@ -121,38 +145,70 @@ def get_node_ip_list(cluster_id=-1):
     return ip_list
 
 
-def get_slave_ip_list(cluster_id=-1):
-    if cluster_id == -1:
+def get_master_host_list(cluster_id=None):
+    if cluster_id is None:
         cluster_id = get_cur_cluster_id()
     path_of_fb = get_path_of_fb(cluster_id)
     props_path = path_of_fb['redis_properties']
-    key = 'sr2_redis_slave_hosts'
-    nodes = get_props(props_path, key, [])
+    key = 'sr2_redis_master_hosts'
+    hosts = get_props(props_path, key, [])
+    return hosts
+
+
+def get_master_ip_list(cluster_id=None):
+    if cluster_id is None:
+        cluster_id = get_cur_cluster_id()
+    hosts = get_master_host_list(cluster_id)
     ip_list = []
-    for node in nodes:
-        ip = socket.gethostbyname(node)
+    for host in hosts:
+        ip = socket.gethostbyname(host)
         ip_list.append(ip)
     return ip_list
 
 
-def get_replicas():
+def get_slave_host_list(cluster_id=None):
+    if cluster_id is None:
+        cluster_id = get_cur_cluster_id()
+    path_of_fb = get_path_of_fb(cluster_id)
+    props_path = path_of_fb['redis_properties']
+    key = 'sr2_redis_slave_hosts'
+    hosts = get_props(props_path, key, [])
+    return hosts
+
+
+def get_slave_ip_list(cluster_id=None):
+    if cluster_id is None:
+        cluster_id = get_cur_cluster_id()
+    hosts = get_slave_host_list(cluster_id)
+    ip_list = []
+    for host in hosts:
+        ip = socket.gethostbyname(host)
+        ip_list.append(ip)
+    return ip_list
+
+
+def get_replicas(cluster_id=None):
     """Get replicas using master, slave port count
 
     :return: replicas
     """
-    return len(get_slave_port_list()) / len(get_master_port_list())
-
-
-# Disable Function
-# def get_total_master_slave_port_count():
-#     """Get total master slave port count
-
-#     :return: total master + slave port count
-#     """
-#     total = len(get_master_port_list())
-#     if is_slave_enabled():
-#         total += len(get_slave_port_list())
-#     return total
+    if cluster_id is None:
+        cluster_id = get_cur_cluster_id()
+    m_len = len(get_master_port_list(cluster_id))
+    if m_len <= 0:
+        raise PropsKeyError('sr2_redis_master_hosts')
+    s_len = len(get_slave_port_list(cluster_id))
+    if s_len <= 0:
+        raise PropsKeyError('sr2_redis_slave_hosts')
+    if s_len % m_len is not 0:
+        msg = [
+            'The number of slaves should be multiple values ',
+            'with the number of masters.\n',
+            'master: {}\n'.format(m_len),
+            'slave: {}'.format(s_len),
+        ]
+        raise PropsError(''.join(msg))
+    return s_len / m_len
 
 
 def get_master_port_list(cluster_id=-1):
@@ -169,13 +225,6 @@ def get_master_port_list(cluster_id=-1):
     ports = get_props(props_path, key, [])
     return ports
 
-    # Older Code
-    # fb_config = get_config(cluster_id)
-    # start_port = int(fb_config['master_ports']['from'])
-    # end_port = int(fb_config['master_ports']['to'])
-    # ports = list(range(start_port, end_port + 1))
-    # return ports
-
 
 def get_slave_port_list(cluster_id=-1):
     """Get slave port list
@@ -190,15 +239,6 @@ def get_slave_port_list(cluster_id=-1):
     ports = get_props(props_path, key, [])
     return ports
 
-    # Older Code
-    # fb_config = get_config(cluster_id)
-    # if is_slave_enabled():
-    #     start_port = int(fb_config['slave_ports']['from'])
-    #     end_port = int(fb_config['slave_ports']['to'])
-    #     ports = list(range(start_port, end_port + 1))
-    #     return ports
-    # return []
-
 
 def is_slave_enabled():
     """Return slave enable or not using config
@@ -212,7 +252,15 @@ def is_slave_enabled():
     return is_key_enable(props_path, key)
 
 
-def get_tsr2_home(cluster_id=-1):
+def get_base_directory(expanduser=True):
+    cli_config = get_cli_config()
+    base_directory = cli_config['base_directory']
+    if expanduser:
+        base_directory = os.path.expanduser(base_directory)
+    return base_directory
+
+
+def get_tsr2_home(cluster_id=None):
     """Get tsr2 home path
 
     This is for deploy, copy redis.conf, backup remote logs, etc.
@@ -220,16 +268,85 @@ def get_tsr2_home(cluster_id=-1):
     :param cluster_id: target cluster #
     :return: tsr2 home path
     """
-    cli_config = get_cli_config()
-    base_directory = cli_config['base_directory']
-    base_directory = os.path.expanduser(base_directory)
-    cluster_id = get_cur_cluster_id()
+    if cluster_id is None:
+        cluster_id = get_cur_cluster_id()
+    base_directory = get_base_directory()
     tsr2_home = path_join(
         base_directory,
         'cluster_{}'.format(cluster_id),
         'tsr2-assembly-1.0.0-SNAPSHOT'
     )
     return tsr2_home
+
+
+def get_sata_ssd_no(port, count, digit):
+    if count < 1:
+        return ''
+    rest_number = str(port % count + 1).zfill(digit)
+    return path_join(rest_number, 'nvkvs')
+
+
+def get_ssd_disk_position(port, digit=2):
+    user = os.environ['USER']
+    cluster_id = get_cur_cluster_id()
+    path_of_fb = get_path_of_fb(cluster_id)
+    props_path = path_of_fb['redis_properties']
+    ssd_count = int(get_props(props_path, 'ssd_count', 0))
+    redis_data_prefix = get_props(props_path, 'sr2_redis_data')
+    flash_db_path_prefix = get_props(props_path, 'sr2_flash_db_path')
+    redis_data = path_join(
+        redis_data_prefix + get_sata_ssd_no(port, ssd_count, digit),
+        user,
+    )
+    flash_db_path = path_join(
+        flash_db_path_prefix + get_sata_ssd_no(port, ssd_count, digit),
+        user,
+        'db/db-{port}'.format(port=port),
+    )
+    redis_dump = path_join(redis_data, 'dump')
+    return {
+        'sr2_redis_data': redis_data,
+        'sr2_flash_db_path': flash_db_path,
+        'sr2_redis_dump': redis_dump,
+        'sr2_redis_db_path': flash_db_path,
+    }
+
+
+def get_path_of_fb(cluster_id):
+    base_directory = get_base_directory()
+    cluster_dir = 'cluster_{}'.format(cluster_id)
+    cluster_path = path_join(base_directory, cluster_dir)
+    cluster_backup_path = path_join(base_directory, 'backup')
+    release_path = path_join(base_directory, 'releases')
+    sr2_home = get_tsr2_home(cluster_id)
+    conf_path = path_join(sr2_home, 'conf')
+    redis_properties = path_join(conf_path, 'redis.properties')
+    master_template = path_join(conf_path, 'redis-master.conf.template')
+    slave_template = path_join(conf_path, 'redis-slave.conf.template')
+    thrift_properties = path_join(conf_path, 'thriftserver.properties')
+    sr2_redis_log = path_join(sr2_home, 'logs', 'redis')
+    sr2_redis_conf = path_join(sr2_home, 'conf', 'redis')
+    sr2_redis_conf_temp = path_join(sr2_home, 'conf', 'temp')
+    sr2_redis_bin = path_join(sr2_home, 'bin')
+    sr2_redis_lib = path_join(sr2_home, 'lib')
+
+    return {
+        'base_directory': base_directory,
+        'cluster_path': cluster_path,
+        'cluster_backup_path': cluster_backup_path,
+        'conf_path': conf_path,
+        'release_path': release_path,
+        'redis_properties': redis_properties,
+        'master_template': master_template,
+        'slave_template': slave_template,
+        'thrift_properties': thrift_properties,
+        'sr2_redis_home': sr2_home,
+        'sr2_redis_log': sr2_redis_log,
+        'sr2_redis_conf': sr2_redis_conf,
+        'sr2_redis_conf_temp': sr2_redis_conf_temp,
+        'sr2_redis_bin': sr2_redis_bin,
+        'sr2_redis_lib': sr2_redis_lib,
+    }
 
 
 def get_env_dict(ip, port):
@@ -242,63 +359,29 @@ def get_env_dict(ip, port):
     :return: dict
     """
 
+    ssd_disk_position = get_ssd_disk_position(port)
     cluster_id = get_cur_cluster_id()
     path_of_fb = get_path_of_fb(cluster_id)
-    props_path = path_of_fb['redis_properties']
-    ssd_count = int(get_props(props_path, 'ssd_count'))
-    redis_data_prefix = get_props(props_path, 'sr2_redis_data')
-    flash_db_path_prefix = get_props(props_path, 'sr2_flash_db_path')
-    number = '%02d' % (port % ssd_count + 1)
-    user = os.environ['USER']
-    redis_data = path_join(redis_data_prefix + number, 'nvkvs', user)
-    redis_dump = path_join(redis_data_prefix, 'dump')
-    flash_db_path = path_join(
-        flash_db_path_prefix + number, 'nvkvs', user,
-        'db', 'db-{port}'.format(port=port))
-    home = get_tsr2_home()
-    redis_lib = path_join(home, 'lib')
     return {
-        'sr2_redis_home': home,
-        'sr2_redis_bin': path_join(home, 'bin'),
-        'sr2_redis_lib': path_join(home, 'lib'),
-        'sr2_redis_conf': path_join(home, 'conf', 'redis'),
-        'sr2_redis_log': path_join(home, 'logs', 'redis'),
-        'sr2_redis_data': redis_data,
-        'sr2_redis_dump': redis_dump,
-        'sr2_redis_db_path': redis_data_prefix,
-        'ld_library_path': ('%s/native:/usr/lib64' % redis_lib),
-        'dyld_library_path': ('%s/native:/usr/lib64' % redis_lib),
-
+        'sr2_redis_home': path_of_fb['sr2_redis_home'],
+        'sr2_redis_bin': path_of_fb['sr2_redis_bin'],
+        'sr2_redis_lib': path_of_fb['sr2_redis_lib'],
+        'sr2_redis_conf': path_of_fb['sr2_redis_conf'],
+        'sr2_redis_log': path_of_fb['sr2_redis_log'],
+        'sr2_redis_data': ssd_disk_position['sr2_redis_data'],
+        'sr2_redis_dump': ssd_disk_position['sr2_redis_dump'],
+        'sr2_flash_db_path': ssd_disk_position['sr2_flash_db_path'],
+        'sr2_redis_db_path': ssd_disk_position['sr2_redis_db_path'],
+        'ld_library_path': ':'.join([
+            '{}/native'.format(path_of_fb['sr2_redis_lib']),
+            '/usr/lib64',
+        ]),
+        'dyld_library_path': ':'.join([
+            '{}/native'.format(path_of_fb['sr2_redis_lib']),
+            '/usr/lib64',
+        ]),
         'sr2_redis_host': ip,
         'sr2_redis_port': port,
-        'sr2_flash_db_path': flash_db_path
-    }
-
-
-def get_path_of_fb(cluster_id):
-    cluster_dir = 'cluster_{}'.format(cluster_id)
-    cli_config = get_cli_config()
-    base_directory = cli_config['base_directory']
-    base_directory = os.path.expanduser(base_directory)
-    cluster_path = path_join(base_directory, cluster_dir)
-    cluster_backup_path = path_join(base_directory, 'backup')
-    release_path = path_join(base_directory, 'releases')
-    sr2_home = path_join(cluster_path, 'tsr2-assembly-1.0.0-SNAPSHOT')
-    conf_path = path_join(sr2_home, 'conf')
-    redis_properties = path_join(conf_path, 'redis.properties')
-    master_template = path_join(conf_path, 'redis-master.conf.template')
-    slave_template = path_join(conf_path, 'redis-slave.conf.template')
-
-    return {
-        'base_directory': base_directory,
-        'cluster_path': cluster_path,
-        'cluster_backup_path': cluster_backup_path,
-        'sr2_home': sr2_home,
-        'conf_path': conf_path,
-        'release_path': release_path,
-        'redis_properties': redis_properties,
-        'master_template': master_template,
-        'slave_template': slave_template,
     }
 
 
@@ -361,7 +444,7 @@ def get_cli_config():
         with open(conf_path, 'w') as fd:
             fd.writelines("base_directory:")
     with open(path_join(root_of_cli_config, 'config'), 'r') as f:
-        cli_config = yaml.load(f)
+        cli_config = yaml.safe_load(f)
     return cli_config
 
 
@@ -530,12 +613,12 @@ def get_deploy_history():
             yaml.dump(default, f, default_flow_style=False)
     try:
         with open(file_path, 'r') as f:
-            ret = yaml.load(f)
+            ret = yaml.safe_load(f)
         if ret is None:
             with open(file_path, 'w') as f:
                 yaml.dump(default, f, default_flow_style=False)
         with open(file_path, 'r') as f:
-            ret = yaml.load(f)
+            ret = yaml.safe_load(f)
         with open(file_path, 'w') as f:
             d_keys = default.keys()
             r_keys = ret.keys()
@@ -544,7 +627,7 @@ def get_deploy_history():
                     ret[key] = default[key]
             yaml.dump(ret, f, default_flow_style=False)
         with open(file_path, 'r') as f:
-            return yaml.load(f)
+            return yaml.safe_load(f)
     except yaml.scanner.ScannerError:
         raise YamlSyntaxError(file_path)
 

@@ -104,8 +104,8 @@ class CommandError(Error):
         self.hostname = hostname
         self.port = port
         logger.error('''CommandError: 
-exit_status="{exit_status} "
-command="{command} "
+exit_status="{exit_status}"
+command="{command}"
 host:port="{hostname}:{port}"'''.format(
             exit_status=exit_status,
             command=command,

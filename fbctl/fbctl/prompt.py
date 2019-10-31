@@ -7,7 +7,7 @@ def get_cli_prompt(user):
     :param user: user name
     :return: prompt string
     """
-    cluster_id = get_cur_cluster_id()
+    cluster_id = get_cur_cluster_id(allow_empty_id=True)
     if cluster_id < 0:
         cluster_id = '-'
     return '{}@flashbase:{}>'.format(user, cluster_id)
@@ -20,7 +20,7 @@ def get_sql_prompt(user):
     :param user: user name
     :return: prompt string
     """
-    cluster_id = get_cur_cluster_id()
+    cluster_id = get_cur_cluster_id(allow_empty_id=True)
     if cluster_id < 0:
         cluster_id = '-'
     return '({}){}@flashbase:sql>'.format(cluster_id, user)

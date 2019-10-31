@@ -116,11 +116,4 @@ dmypy.json
 spark2
 spark-2.3.1-bin-hadoop2.7.tgz
 model
-.vscode
-cli_history
-sql_history
-pip_modules
-conf_backup
-.flashbase/config
-.flashbase/HEAD
-.flashbase/deploy_history
+.vscode/

@@ -9,7 +9,9 @@ def edit(f, syntax=None):
 
     :param f: file name
     """
-    cmd = '{} {}'.format(EDITOR, f)
+    cmd = [EDITOR]
     if syntax and EDITOR == 'vim':
-        cmd = '{} -c "set syntax={}"'.format(cmd, syntax)
+        cmd.append('-c "set syntax={}"'.format(syntax))
+    cmd.append(f)
+    cmd = ' '.join(cmd)
     call(cmd, shell=True)

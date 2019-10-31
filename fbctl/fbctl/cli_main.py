@@ -12,7 +12,6 @@ import socket
 
 import click
 import fire
-from ask import askBool, askInt, askPassword, ask
 from fire.core import FireExit
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -20,13 +19,16 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers.sql import SqlLexer
-from rediscluster.exceptions import ClusterError
 
 import utils
 from cli import Cli
 from cluster import Cluster
-from config import get_config, get_cur_cluster_id, get_env_dict, \
-    get_node_ip_list, get_root_of_cli_config
+from config import (
+    get_cur_cluster_id,
+    get_env_dict,
+    get_node_ip_list,
+    get_root_of_cli_config
+)
 import config
 from deploy_util import DeployUtil, DEPLOYED, PENDING, CLEAN
 from log import logger
@@ -37,20 +39,23 @@ from prompt import get_cli_prompt
 from sql import FbSql, fbsql
 from thriftserver import ThriftServer
 from utils import CommandError, TableReport, clear_screen, style
-from rsync_over_sftp import RsyncOverSftp
 from center import Center
 import color
 import ask_util
 import cluster_util
 import editor
 from exceptions import (
-    PropsKeyError,
     SSHConnectionError,
     HostConnectionError,
     HostNameError,
     FileNotExistError,
     YamlSyntaxError,
     PropsSyntaxError,
+    PropsKeyError,
+    PropsError,
+    ClusterIdError,
+    ClusterNotExistError,
+    FlashbaseError,
     SSHCommandError,
 )
 
@@ -91,14 +96,13 @@ def run_monitor():
 def run_deploy(cluster_id=None, history_save=True):
     # validate cluster id
     if cluster_id is None:
-        cluster_id = get_cur_cluster_id()
-        if cluster_id < 1:
+        cluster_id = get_cur_cluster_id(allow_empty_id=True)
+        if cluster_id < 0:
             msg = 'Select cluster first or type cluster id with argument'
             logger.error(msg)
             return
     if not cluster_util.validate_id(cluster_id):
-        logger.error('Invalid cluster id: {}'.format(cluster_id))
-        return
+        raise ClusterIdError(cluster_id)
 
     # validate option
     if not isinstance(history_save, bool):
@@ -122,13 +126,13 @@ def _deploy(cluster_id, history_save):
             'Do you want to deploy again?',
             color.ENDC,
         ]
-        yes = askBool(''.join(q), default='n')
+        yes = ask_util.askBool(''.join(q), default='n')
         if not yes:
             logger.info('Cancel deploy.')
             return
 
     restore_yes = None
-    current_time = strftime("%Y%m%d%H%M%s", gmtime())
+    current_time = strftime("%Y%m%d%H%M%S", gmtime())
     cluster_backup_dir = 'cluster_{}_bak_{}'.format(cluster_id, current_time)
     conf_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, current_time)
     tmp_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, 'tmp')
@@ -180,7 +184,7 @@ def _deploy(cluster_id, history_save):
         'Do you want to proceed with the deploy ',
         'accroding to the above information?',
     ]
-    yes = askBool(''.join(msg))
+    yes = ask_util.askBool(''.join(msg))
     if not yes:
         logger.info("Cancel deploy.")
         return
@@ -206,8 +210,8 @@ def _deploy(cluster_id, history_save):
 
     # added_hosts = post_hosts - pre_hosts
     logger.info('Checking for cluster exist...')
-    meta = [['HOST', 'STATUS']]
     added_hosts = set(hosts)
+    meta = []
     if deploy_state == DEPLOYED:
         pre_hosts = config.get_props(props_path, 'sr2_redis_master_hosts')
         added_hosts -= set(pre_hosts)
@@ -219,13 +223,15 @@ def _deploy(cluster_id, history_save):
             can_deploy = False
             continue
         meta.append([host, color.green('CLEAN')])
-    utils.print_table(meta)
+    if meta:
+        utils.print_table([['HOST', 'STATUS']] + meta)
     if not can_deploy:
         logger.error('Cluster information exist on some hosts.')
         return
         # if not force:
         #     logger.error("If you trying to force, use option '--force'")
         #     return
+    logger.info('OK')
 
     # backup conf
     if deploy_state == DEPLOYED:
@@ -445,7 +451,7 @@ def run_import_conf():
             logger.info('Save config.yaml from redis.properties')
 
     def _get_cluster_ids_from_fb():
-        cluster_id = config.get_cur_cluster_id()
+        cluster_id = config.get_cur_cluster_id(allow_empty_id=True)
         path_of_fb = config.get_path_of_fb(cluster_id)
         base_directory = path_of_fb['base_directory']
         dirs = [f for f in os.listdir(base_directory)
@@ -482,7 +488,7 @@ def run_import_conf():
     utils.print_table(meta)
     if len(rp_exists) == 0:
         return
-    import_yes = askBool('Do you want to import conf?', ['y', 'n'])
+    import_yes = ask_util.askBool('Do you want to import conf?', ['y', 'n'])
     if not import_yes:
         return
 
@@ -569,6 +575,9 @@ def _handle(text):
     if text == 'clear':
         clear_screen()
         return
+    text = text.replace('-- --help', '?')
+    text = text.replace('--help', '?')
+    text = text.replace('?', '-- --help')
     try:
         fire.Fire(
             component=Command,
@@ -584,7 +593,7 @@ def _handle(text):
         if ex.errno == 2:
             logger.error("{}: '{}'".format('FileNotExistError', ex.filename))
         else:
-            raise IOError(ex)
+            logger.exception(ex)
     except EOFError:
         logger.warning('\b\bCanceled')
     except CommandError as ex:
@@ -592,16 +601,19 @@ def _handle(text):
     except FireExit as ex:
         pass
     except (
-            PropsKeyError,
             HostNameError,
             HostConnectionError,
             SSHConnectionError,
             FileNotExistError,
             YamlSyntaxError,
             PropsSyntaxError,
+            PropsKeyError,
+            PropsError,
             SSHCommandError,
     ) as ex:
         logger.error('{}: {}'.format(ex.class_name(), str(ex)))
+    except FlashbaseError as ex:
+        logger.error('[ErrorCode {}] {}'.format(ex.error_code, str(ex)))
     except BaseException as ex:
         logger.exception(ex)
 
@@ -674,6 +686,22 @@ def _initial_check():
         os.system('mkdir -p {}'.format(base_directory))
 
 
+def _validate_cluster_id(cluster_id):
+    try:
+        if cluster_id is None:
+            cluster_id = get_cur_cluster_id(allow_empty_id=True)
+        elif not cluster_id.isdecimal():
+            raise ClusterIdError(cluster_id)
+        cluster_id = int(cluster_id)
+        run_cluster_use(cluster_id)
+        return cluster_id
+    except (ClusterIdError, ClusterNotExistError) as ex:
+        logger.warning(ex)
+        cluster_id = -1
+        run_cluster_use(cluster_id)
+        return cluster_id
+
+
 @click.command()
 @click.option('-u', '--user', default='root', help='User.')
 @click.option('-p', '--password', default=None, help='Password.')
@@ -688,14 +716,8 @@ def main(user, password, cluster_id, file, debug):
     if file:
         user_info['print_mode'] = 'file'
     logger.debug('Start fbcli')
-    if not cluster_id:
-        cluster_id = get_cur_cluster_id()
-    run_cluster_use(cluster_id)
-    if cluster_id not in cluster_util.get_cluster_list() + [-1]:
-        root_of_cli_config = get_root_of_cli_config()
-        head_path = path_join(root_of_cli_config, 'HEAD')
-        with open(head_path, 'w') as fd:
-            fd.write('%s' % '-1')
+
+    cluster_id = _validate_cluster_id(cluster_id)
 
     if 'test' in sys.argv:
         run_test()

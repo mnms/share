@@ -1,12 +1,13 @@
 import sys
 from os.path import expanduser, basename, isdir, dirname, realpath
 from os.path import join as path_join
-from os import environ, mkdir
+from os import environ, mkdir, system
 
 from logbook import Logger, Processor
 from logbook import StreamHandler, RotatingFileHandler
 from logbook import DEBUG, INFO, WARNING, ERROR
 import color
+
 
 def get_log_color(level):
     color_by_level = {
@@ -27,7 +28,6 @@ def get_log_code(level):
         'error': ERROR,
     }
     return code[level]
-
 
 
 formatter = {
@@ -62,11 +62,11 @@ formatter = {
     ]),
 }
 
+
 def inject_extra(record):
     record.extra['basename'] = basename(record.filename)
     record.extra['level_color'] = get_log_color(record.level)
     record.extra['clear_color'] = color.ENDC
-
 
 
 logger = Logger('root')
@@ -83,29 +83,28 @@ stream_handler.push_application()
 
 # for rolling file log
 if 'FBPATH' not in environ:
-    p = dirname(realpath(__file__))
-    p = dirname(p)
-    p = path_join(p, '.flashbase')
-    logger.error('''You should set FBPATH in env
-    ex)
-    export FBPATH={}'''.format(p))
+    msg = [
+        'To start using fbctl, you should set env FBPATH',
+        'ex)',
+        'export FBPATH=$HOME/.flashbase'
+    ]
+    logger.error('\n'.join(msg))
     exit(1)
 p = environ['FBPATH']
 if not isdir(p):
-    mkdir(p)
-file_path = dirname(expanduser(p))
-file_path = expanduser(path_join(file_path, 'logs'))
+    system('mkdir -p {}'.format(p))
+file_path = expanduser(path_join(p, 'logs'))
 if isdir(file_path):
     backup_count = 7
-    max_size = 1024 * 1024 * 1024 # 1Gi
+    max_size = 1024 * 1024 * 1024  # 1Gi
     file_level = DEBUG
     each_size = max_size / (backup_count + 1)
-    filename = path_join(file_path, 'fbcli-rotate.log')
+    filename = path_join(file_path, 'fbctl-rotate.log')
     rotating_file_handler = RotatingFileHandler(
         filename=filename,
         level=file_level,
-        bubble=True, 
-        max_size=each_size, 
+        bubble=True,
+        max_size=each_size,
         backup_count=backup_count
     )
     rotating_file_handler.format_string = formatter['file']
@@ -117,7 +116,7 @@ else:
     except Exception:
         logger.error("CreateDirError: {}".format(file_path))
         logger.warn('Could not logging in file. Confirm and restart.')
-    
+
 
 def set_level(level):
     level_list = ['debug', 'info', 'warning', 'error', 'warn']
@@ -140,7 +139,3 @@ def set_mode(mode):
     if mode == 'normal':
         stream_handler.format_string = formatter['screen']
         set_level('info')
-        
-
-
-
