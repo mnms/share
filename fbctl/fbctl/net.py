@@ -102,12 +102,11 @@ def ssh_execute_async(client, command):
 def ssh_execute(client, command, allow_status=[0]):
     """Execute ssh blocking I/O
 
-    We get allow_status as an input. We ignore some error status,
-    if it exist in allow_status.
+    We get allow_status as an input.
+    We ignore some error status, if it exist in allow_status.
 
     :param client: SSHClient
     :param command: command
-    :param is_print: Print remote log or not
     :param allow_status: list of allow status.
     """
     try:
@@ -125,8 +124,8 @@ def ssh_execute(client, command, allow_status=[0]):
         logger.debug(command)
         logger.debug('---------------- stdout')
         logger.debug(stdout_msg)
-        stderr_msg = stderr.read()
 
+    stderr_msg = stderr.read()
     if stderr_msg is not "":
         logger.debug('---------------- command to : %s' % client.hostname)
         logger.debug(command)
@@ -136,7 +135,8 @@ def ssh_execute(client, command, allow_status=[0]):
 
     exit_status = stdout.channel.recv_exit_status()
     if exit_status not in allow_status:
-        raise SSHCommandError(exit_status, client.hostname, command)
+        host = client.hostname
+        raise SSHCommandError(exit_status, host, stderr_msg)
     return exit_status, stdout_msg, stderr_msg
 
 
@@ -164,7 +164,6 @@ def is_exist(client, file_path):
 
 def copy_dir_to_remote(client, local_path, remote_path):
     """copy directory from local to remote
-
     if already file exist, overwrite file
     copy all files recursively
     directory must exist
@@ -173,6 +172,7 @@ def copy_dir_to_remote(client, local_path, remote_path):
     :param local_path: absolute path of file
     :param remote_path: absolute path of file
     """
+    logger.debug('copy_dir_to_remote')
     logger.debug('copy FROM localhost:{} TO node:{}'.format(
         local_path,
         remote_path

@@ -38,8 +38,8 @@ class FileNotExistError(FbctlBaseError):
     def __init__(self, file_path, **kwargs):
         message = "'{}'".format(file_path)
         if 'host' in kwargs.keys():
-            host = kwargs['host']
-            message = "'{}' at '{}'".format(file_path, host)
+            self.host = kwargs['host']
+            message = "'{}' at '{}'".format(file_path, self.host)
         FbctlBaseError.__init__(self, message, *kwargs)
 
 
@@ -79,16 +79,27 @@ class ClusterIdError(FbctlBaseError):
 
 
 class ClusterNotExistError(FbctlBaseError):
-    def __init__(self, cluster_id, *args):
+    def __init__(self, cluster_id, **kwargs):
         message = "Not exist cluster '{}'".format(cluster_id)
+        if 'host' in kwargs.keys():
+            self.host = kwargs['host']
+            message = "{} at '{}'".format(message, self.host)
+        FbctlBaseError.__init__(self, message, *kwargs)
+
+
+class ClusterRedisError(FbctlBaseError):
+    def __init__(self, message, *args):
         FbctlBaseError.__init__(self, message, *args)
 
 
 class SSHCommandError(FbctlBaseError):
-    def __init__(self, exit_status, host, command, *args):
+    def __init__(self, exit_status, host, stderr, *args):
+        self.exit_status = exit_status
+        self.host = host
+        self.stderr = stderr
         message = "[ExitCode {}] Fail execute command at '{}': {}".format(
             exit_status,
             host,
-            command,
+            stderr
         )
         FbctlBaseError.__init__(self, message, *args)

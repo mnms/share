@@ -19,6 +19,7 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers.sql import SqlLexer
+import paramiko
 
 import utils
 from cli import Cli
@@ -55,6 +56,7 @@ from exceptions import (
     PropsError,
     ClusterIdError,
     ClusterNotExistError,
+    ClusterRedisError,
     FlashbaseError,
     SSHCommandError,
 )
@@ -75,21 +77,15 @@ def run_monitor():
 
     Monitor remote logs
     """
-    ip_list = get_node_ip_list()
-    i = 1
-    msg = ''
-    for ip in ip_list:
-        msg += '%d) %s\n' % (i, ip)
-        i += 1
-    target_num = int(askInt(text=msg, default='1'))
-    logger.info('Ok. %s' % target_num)
-    target_index = target_num - 1
-    ip = ip_list[target_index]
-    client = get_ssh(ip)
-    envs = get_env_dict(ip, 0)
-    redis_log = envs['sr2_redis_log']
-    command = 'tail -f {redis_log}/*'.format(redis_log=redis_log)
-    ssh_execute_async(client=client, command=command)
+    host_list = config.get_master_host_list()
+    cluster_id = config.get_cur_cluster_id()
+    target_host = ask_util.host_for_monitor(host_list)
+    logger.info('Press Ctrl-C for exit.')
+    client = get_ssh(target_host)
+    path_of_fb = config.get_path_of_fb(cluster_id)
+    sr2_redis_log = path_of_fb['sr2_redis_log']
+    command = 'tail -f {}/servers*'.format(sr2_redis_log)
+    ssh_execute_async(client, command)
 
 
 # def run_deploy_v3(cluster_id=None, history_save=True, force=False):
@@ -192,12 +188,12 @@ def _deploy(cluster_id, history_save):
     # check node status
     success = Center().check_hosts_connection(hosts, True)
     if not success:
-        logger.error('There are unavailable host')
+        logger.error('There are unavailable host.')
         return
-    logger.debug('Connection of all hosts ok')
+    logger.debug('Connection of all hosts ok.')
     success = Center().check_include_localhost(hosts)
     if not success:
-        logger.error('Must include localhost')
+        logger.error('Must include localhost.')
         return
 
     # if pending, delete legacy on each hosts
@@ -345,36 +341,8 @@ def _deploy(cluster_id, history_save):
         ssh_execute(client=client, command=command)
         client.close()
 
-    logger.info('Complete to deploy cluster {}'.format(cluster_id))
+    logger.info('Complete to deploy cluster {}.'.format(cluster_id))
     Cluster().use(cluster_id)
-
-
-def run_passwd():
-    """Set password
-    """
-    user = user_info['user']
-    password = askPassword('Password?')
-    confirm = askPassword('Password again?')
-    if password != confirm:
-        logger.info('Password is not same')
-        return
-    h = hashlib.md5(password.encode())
-    h2 = h.hexdigest()
-    meta = json.loads(utils.get_meta_data('auth'))
-    meta[user] = {'password': h2}
-    utils.set_meta_data('auth', meta)
-    logger.info('Password complete.')
-
-
-def run_adduser(user):
-    """Add user"""
-    meta = json.loads(utils.get_meta_data('auth'))
-    if user in meta:
-        logger.info('User "%s" exist.' % user)
-        return
-    meta[user] = {}
-    utils.set_meta_data('auth', meta)
-    logger.info('User "%s" added.' % user)
 
 
 def run_fbsql():
@@ -495,19 +463,13 @@ def run_import_conf():
     _import_from_fb_to_cli_conf(rp_exists)
 
 
-def run_delete(cluster_id=None):
-    if not cluster_id:
-        cluster_id = config.get_cur_cluster_id()
-    valid = cluster_util.validate_id(cluster_id)
-    if not valid:
-        logger.error('Invalid cluster id: {}'.format(cluster_id))
-        return
-    if cluster_id not in cluster_util.get_cluster_list():
-        logger.error('Cluster not exist: {}'.format(cluster_id))
-        return
+def run_delete():
     cluster = Cluster()
-    cluster.stop(force=True, reset=True)
-    # delete cluster folder
+    cluster.update_ip_port()
+    cluster.stop(force=True)
+    cluster.clean(reset=True)
+
+    cluster_id = config.get_cur_cluster_id()
     cli_cluster_path = config.get_path_of_cli(cluster_id)["cluster_path"]
 
     path_of_fb = config.get_path_of_fb(cluster_id)
@@ -524,8 +486,7 @@ def run_delete(cluster_id=None):
         ]
         ssh_execute(client=client, command=' '.join(cmd))
         client.close()
-    if config.get_cur_cluster_id() == cluster_id:
-        cluster.use(-1)
+    cluster.use(-1)
 
 
 def run_edit():
@@ -539,17 +500,14 @@ We use python-fire(https://github.com/google/python-fire)
 for automatically generating CLIs
 
     - deploy: copy flashbase package to nodes
-    - cli: redis-cli command wrapper
+    - c: change cluster #
     - cluster: trib.rb cluster wrapper
-    - sql: enter sql mode
-    - flashbase: flashbase script wrapper (deprecated)
+    - cli: redis-cli command wrapper
     - monitor: monitor logs
+    - sql: enter sql mode
     - thriftserver: edit, start, stop thriftserver
     - ll: change log level to debug fbcli
-    - adduser: add user
-    - passwd: set password
-    - c: change cluster #
-    """
+ """
 
     def __init__(self):
         """Member variables will be cli
@@ -560,8 +518,6 @@ for automatically generating CLIs
         self.thriftserver = ThriftServer()
         self.ll = log.set_level
         self.cli = Cli()
-        self.passwd = run_passwd
-        self.adduser = run_adduser
         self.import_conf = run_import_conf
         self.sql = run_fbsql
         self.c = run_cluster_use
@@ -610,6 +566,9 @@ def _handle(text):
             PropsKeyError,
             PropsError,
             SSHCommandError,
+            ClusterRedisError,
+            ClusterNotExistError,
+            ClusterIdError,
     ) as ex:
         logger.error('{}: {}'.format(ex.class_name(), str(ex)))
     except FlashbaseError as ex:
@@ -665,8 +624,9 @@ def _handle_file(user, file_name, cluster_id):
 
 
 def _initial_check():
-    client = get_ssh('localhost')
-    if not client:
+    try:
+        client = get_ssh('localhost')
+    except paramiko.ssh_exception.SSHException:
         logger.error('Need to ssh-keygen for localhost')
         exit(1)
     cli_config = config.get_cli_config()
@@ -703,12 +663,10 @@ def _validate_cluster_id(cluster_id):
 
 
 @click.command()
-@click.option('-u', '--user', default='root', help='User.')
-@click.option('-p', '--password', default=None, help='Password.')
 @click.option('-c', '--cluster_id', default=None, help='ClusterId.')
 @click.option('-f', '--file', default=None, help='File.')
 @click.option('-d', '--debug', default=False, help='Debug.')
-def main(user, password, cluster_id, file, debug):
+def main(cluster_id, file, debug):
     _initial_check()
     if debug:
         log.set_mode('debug')
@@ -724,6 +682,7 @@ def main(user, password, cluster_id, file, debug):
         exit(0)
 
     if file:
+        user = os.environ['USER']
         _handle_file(user, file, cluster_id)
         exit(0)
 
@@ -736,9 +695,8 @@ def main(user, password, cluster_id, file, debug):
         style=style)
     while True:
         try:
-            p = get_cli_prompt(user)
-            logger.info(p)
-            text = session.prompt()
+            p = get_cli_prompt()
+            text = session.prompt(p, style=style)
             if text == "exit":
                 break
             if 'fbcli' in text:

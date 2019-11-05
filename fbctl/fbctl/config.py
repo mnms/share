@@ -636,3 +636,19 @@ def save_deploy_history(history):
     file_path = path_join(get_root_of_cli_config(), 'deploy_history')
     with open(file_path, 'w') as f:
         yaml.dump(history, f, default_flow_style=False)
+
+
+def ensure_host_not_changed(tmp_path):
+    cluster_id = get_cur_cluster_id()
+    path_of_fb = get_path_of_fb(cluster_id)
+    props_path = path_of_fb['redis_properties']
+    tmp_host_list = get_props(tmp_path, 'sr2_redis_master_hosts')
+    master_host_list = get_props(props_path, 'sr2_redis_master_hosts')
+    if sorted(master_host_list) != sorted(tmp_host_list):
+        raise PropsError("Cannot edit 'SR2_REDIS_MASTER_HOSTS'")
+    slave_enable = is_key_enable(props_path, 'sr2_redis_slave_hosts')
+    if slave_enable:
+        tmp_host_list = get_props(tmp_path, 'sr2_redis_slave_hosts')
+        slave_host_list = get_props(props_path, 'sr2_redis_slave_hosts')
+        if sorted(slave_host_list) != sorted(tmp_host_list):
+            raise PropsError("Cannot edit 'SR2_REDIS_SLAVE_HOSTS'")

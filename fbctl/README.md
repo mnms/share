@@ -1,10 +1,10 @@
-# Fbcli Guide
+# Fbctl Guide
 
 [Installing Prerequisites](#installing-prerequisites)
 
-[Fbcli Install](#fbcli-install)
+[Fbctl Install](#fbctl-install)
 
-[Fbcli 실행하기](#fbcli-실행하기)
+[Fbctl 실행하기](#fbctl-실행하기)
 
 [Deploy](#deploy)
 
@@ -16,146 +16,84 @@
 
 [Logging in file](#logging-in-file)
 
-
 </br>
 </br>
 
 ## Installing Prerequisites
 
-* [Installing prerequisites for flashbase](https://github.com/mnms/share#installing-prerequisites)
+* Installing prerequisites for flashbase
 
 * Python 2.7
 
-
 </br>
 </br>
 
-## Fbcli Install
-
- 
+## Fbctl Install
 
 ```
-$ cd ~/fbcli
-$ sh install.sh
+$ pip insatll fbctl
+```
 
+</br>
+</br>
 
-    ________    ___   _____ __  ______  ___   _____ ______
-   / ____/ /   /   | / ___// / / / __ )/   | / ___// ____/
-  / /_  / /   / /| | \__ \/ /_/ / __  / /| | \__ \/ __/
- / __/ / /___/ ___ |___/ / __  / /_/ / ___ |___/ / /___
-/_/   /_____/_/  |_/____/_/ /_/_____/_/  |_/____/_____/
+## Fbctl 실행하기
 
-Start to install FlashBaseCLI
-Obtaining file:///home/dudaji/fbcli
+실행하기 전에 환경변수 FBPATH 설정이 필요합니다. 미설정시 아래와 같이 에러메시지가 발생합니다.
 
-...
-
-Complete to install FlashBaseCLI!
-
-To start using fbcli, you should set flashbase path in env FBPATH and PATH
+```
+To start using fbctl, you should set env FBPATH
 ex)
-export FBPATH=$HOME/fbcli/.flashbase
-export PATH=$PATH:$HOME/.local/lib/python2.7/site-packages/
+export FBPATH=$HOME/.flashbase
 ```
 
-정상적으로 설치에 성공하면 "Complete to install FlashBaseCLI!" 메세지가 나타납니다.
-
-환경변수 FBPATH와 PATH를 설정이 필요합니다. 설정값은 실행환경마다 다를 수 있습니다.
-
-FBPATH: <설치 경로>/fbcli/.flashbase
-
-PATH: [링크](https://pip.pypa.io/en/stable/user_guide/#user-installs) 참조
-
-
-</br>
 </br>
 
-## Fbcli 실행하기
-
-fbcli 설치 후 다음과 같이 `fbcli` 명령어를 통해 fbcli에 접속할 수 있습니다.
-
+설치 및 설정완료 후 아래와 같이 `fbctl` 을 입력하면 fbctl이 실행됩니다.
 ```
 $ fbcli
 ```
 
-
 </br>
 
-fbcli 최초접속시 base_directory를 물어봅니다. base_directory는 flashbase의 root path 입니다.
-
-> 대괄호 안의 값은 default value이며 아무값도 입력하지 않으면 default value가 선택됩니다.
->
-> 질의에 따라 default value가 없을 수도 있습니다.
+fbctl 최초접속시 base_directory를 물어봅니다. base_directory는 flashbase의 root path 입니다.
 
 ```
 Type base directory of flashbase [~/tsr2]
 ~/tsr2
 OK, ~/tsr2
 ```
+> 대괄호 안의 값은 default value이며 아무값도 입력하지 않으면 default value가 선택됩니다.
+>
+> 질의에 따라 default value가 없을 수도 있습니다.
 
  `edit` 명령어를 이용하거나 `$FBPAHT/.flashbase/config` 파일을 열어 base_directory 를 수정할 수 있습니다.
 
-
+</br>
 
 정상적으로 접속이 되면 가장 최근에 접속했던 cluster에 접속되며, 없는 경우 `-` 로 표시됩니다.
 
-fbcli 접속 시 prompt 형식은 `<user-name>@flashbase:<cluster-id>>` 입니다.
+fbctl의 prompt 형식은 `<user-name>@flashbase:<cluster-id>>` 입니다.
+
+ex)
 
 ```
 root@flashbase:->
+root@flashbase:1>
 ```
-
-
-</br>
-
-만약 기존에 flashbase가 운영중인 환경에서 fbcli를 설치하는 경우 `import-conf` 명령어를 사용하세요.
-
-```
-root@flashbase:-> import-conf
-Diff fb and cli conf folders.
-+------------+------------------+
-| cluster_id | state            |
-+------------+------------------+
-| 1          | IMPORT           |
-+------------+------------------+
-| 2          | SKIP(dest_exist) |
-+------------+------------------+
-| 3          | SKIP(broken)     |
-+------------+------------------+
-Do you want to import conf? (y/n)
-y
-Save config.yaml from redis.properties
-Cluster - selected.
-root@flashbase:->
-```
-
-
-
-`import-conf` 의 state의 종류는 다음과 같습니다.
-
-* IMPORT: import가 가능한 클러스터 입니다. flashbase의 설정을 fbcli로 가져옵니다.
-
-* SKIP(dest_exist): 이미 import 되어있는 클러스터 입니다.
-
-* SKIP(broken): 설치 중 중단 등의 이유로 정상적인 상태가 아닌 클러스터 입니다.
-
-
-
-import가 가능한 cluster가 있는 경우 import 진행 여부를 물어봅니다. `y` 를 선택하는 경우 import가 진행됩니다.
-
 
 </br>
 </br>
 
 ## Deploy
 
-deploy는 flashbase를 실행시키기 위한 설치과정입니다. 클러스터마다 deploy가 이루어져야 합니다.
+deploy는 flashbase 설치과정입니다. 클러스터마다 deploy가 이루어져야 합니다.
 
 ```
-root@flashbase:-> deploy 32
+> deploy 1
 ```
 
-cluster id를 생략하는 경우 현재 접속중인 cluster를 기준으로 진행합니다.
+</br>
 
 정보 입력 시 아래의 값들은 가장 최근에 입력했던 값을 default value로 보여줍니다.
 
@@ -165,12 +103,14 @@ cluster id를 생략하는 경우 현재 접속중인 cluster를 기준으로 �
 * number of ssd
 * prefix of (redis data / redis db path / flash db path)
 
-현재 입력하는 값이 default value로 저장되지 않도록 하려면 deploy시 `--history-save=False` 옵션을 주세요.
-
+현재 입력하는 값이 default value로 저장되지 않도록 하려면  `--history-save` 옵션을 사용하세요.
+```
+> deploy --history-save=False
+```
 
 </br>
 
-#### installer 선택
+### installer 선택
 
 ```
 Select installer
@@ -192,10 +132,7 @@ installer를 선택합니다. 목록에 추가하고 싶은 경우  `$FBPATH/rel
 
 ex)  `~/tsr2-installer.bin.flashbase_v1.1.10.centos`
 
-</br>
-
-url 입력 시 아래와 같이 installer 파일 다운로드가 선행됩니다.
-다운로드된 파일은 `$FBPATH/releases` 아래에 저장됩니다.
+url 입력 시 아래와 같이 installer 파일 다운로드가 진행되며 파일은 `$FBPATH/releases` 아래에 저장됩니다.
 
 ```
 Downloading tsr2-installer.bin.flashbase_v1.1.10.centos
@@ -204,7 +141,7 @@ Downloading tsr2-installer.bin.flashbase_v1.1.10.centos
 
 </br>
 
-#### host 입력
+### host 입력
 
 ```
 Please type host list separated by comma(,) [127.0.0.1]
@@ -217,49 +154,57 @@ ip주소 혹은 hostname을 입력합니다. 여러 개를 입력하는 경우 �
 
 </br>
 
-#### master 정보 입력
+### master 정보 입력
 
 ```
 How many masters would you like to create on each host? [1]
 1
 OK, 1
-Please type ports separate with comma(,) and use hyphen(-) for range. [21200]
-21200
-OK, ['21200']
+Please type ports separate with comma(,) and use hyphen(-) for range. [18100]
+18100
+OK, ['18100']
 ```
 
 각 host에 몇 개의 master 를 생성할지 입력합니다. 
 
 만약 4개 host를 선택했고 1를 입력한다면 총 4개의 master가 생성됩니다. 
 
-port 입력은 쉼표(,)를 구분자로 사용하며 범위를 입력하고 싶은 경우 하이픈(-)을 사용하세요. ex) `21200-21202`
+port 입력은 쉼표(,)를 구분자로 사용하며 범위를 입력하고 싶은 경우 하이픈(-)을 사용하세요. 
+
+ex) `18100-18101`
 
 port는 cluster id와 master의 개수를 기반으로 추천해줍니다.
 
 
 </br>
 
-#### slave 정보 입력
+### slave 정보 입력
 
 ```
 How many replicas would you like to create on each master? [2]
 2
 OK, 2
-Please type ports separate with comma(,) and use hyphen(-) for range. [21250-21251]
-21250-21251
-OK, ['21250-21251']
+Please type ports separate with comma(,) and use hyphen(-) for range. [18150-18151]
+18150-18151
+OK, ['18150-18151']
 ```
 
-각 master 마다 몇 개의 slave를 생성할 지 입력합니다. 만약 4개의 마스터를 생성하고 2를 입력한다면 총 8개의 slave가 생성됩니다. slave를 사용하지 않으려면 0을 입력하세요. 
+각 master 마다 몇 개의 slave를 생성할 지 입력합니다. 
 
-port 입력은 쉼표(,)를 구분자로 사용하며 범위를 입력하고 싶은 경우 하이픈(-)을 사용하세요. ex) `21250-21251`
+만약 4개의 마스터를 생성하고 2를 입력한다면 총 8개의 slave가 생성됩니다. 
+
+slave를 사용하지 않으려면 0을 입력하세요. 
+
+port 입력은 쉼표(,)를 구분자로 사용하며 범위를 입력하고 싶은 경우 하이픈(-)을 사용하세요. 
+
+ex) `18150-18151`
 
 port는 cluster id와 slave의 개수를 기반으로 추천해줍니다.
 
 
 </br>
 
-#### 그 외 정보 입력
+### 그 외 정보 입력
 
 ```
 How many sdd would you like to use? [3]
@@ -276,7 +221,7 @@ Type prefix of flash_db_path [~/ssd_]
 
 </br>
 
-#### 정보확인
+### 정보확인
 
 ```
 +-----------------+---------------------------------------------+
@@ -287,8 +232,8 @@ Type prefix of flash_db_path [~/ssd_]
 |                 | nodeB                                       |
 |                 | nodeC                                       |
 |                 | nodeD                                       |
-| master ports    | 21200                                       |
-| slave ports     | 21250-21251                                 |
+| master ports    | 18100                                       |
+| slave ports     | 18150-18151                                 |
 | ssd count       | 3                                           |
 | redis data path | ~/sata_ssd/ssd_                             |
 | redis db path   | ~/sata_ssd/ssd_                             |
@@ -300,10 +245,9 @@ y
 
 모든 정보입력이 완료되면 위와 같이 입력한 정보들을 확인합니다.
 
-
 </br>
 
-#### Deploy 진행
+### Deploy 진행
 
 ```
 Check status of hosts...
@@ -315,6 +259,7 @@ Check status of hosts...
 | nodeC     | OK     |
 | nodeD     | OK     |
 +-----------+--------+
+OK
 Checking for cluster exist...
 +-----------+--------+
 | HOST      | STATUS |
@@ -324,42 +269,24 @@ Checking for cluster exist...
 | nodeC     | CLEAN  |
 | nodeD     | CLEAN  |
 +-----------+--------+
+OK
 Transfer install and execute...
-nodeA
-nodeB
-nodeC
-nodeD
+ - nodeA
+ - nodeB
+ - nodeC
+ - nodeD
 Sync conf...
-Complete to deploy cluster 32
-Cluster 32 selected.
-root@flashbase:32>d
+Complete to deploy cluster 1
+Cluster 1 selected.
 ```
 
 deploy가 성공적으로 진행되면 위와 같은 메세지들과 함께 완료된 후 클러스터에 접속이 됩니다.
 
-deploy가 완료되었다면 `import-conf` 명령어를 통해 import 를 진행해주세요.
-
-
-
-```
-root@flashbase:32> import-conf
-Diff fb and cli conf folders.
-+------------+--------+
-| cluster_id | state  |
-+------------+--------+
-| 32         | IMPORT |
-+------------+--------+
-Do you want to import conf? (y/n)
-y
-Save config.yaml from redis.properties
-```
-
-
 </br>
 
-#### Deploy 진행 중 오류 발생시
+### Deploy 진행 중 오류 발생시
 
-* HostError
+#### Host connection error
 
 ```
 Check status of hosts...
@@ -371,19 +298,18 @@ Check status of hosts...
 | nodeC | UNKNOWN HOST     |
 | nodeD | CONNECTION ERROR |
 +-------+------------------+
-There are unavailable host
+There are unavailable host.
 ```
 
 `SSH ERROR`: ssh 접속 오류입니다. key 교환 혹은 ssh client/server 상태를 점검하세요
 
-`UNKNOWN HOST`: hostname을 통해 ip주소를 가져올 수 없는 경우입니다. `/etc/hosts` 등을 확인하세요.
+`UNKNOWN HOST`: hostname을 통해 ip주소를 가져올 수 없는 경우입니다.
 
 `CONNECTION ERROR`: host의 상태 혹은 outbound/inbound 등을 확인하세요.
 
-
 </br>
 
-* ClusterError
+#### Cluster already exist
 
 ```
 Checking for cluster exist...
@@ -398,7 +324,7 @@ Checking for cluster exist...
 Cluster information exist on some hosts.
 ```
 
-CLUSTER EXIST: 해당 host에 이미 deploy가 진행된 이력이 있는 경우입니다.
+`CLUSTER EXIST`: 해당 host에 이미 deploy가 진행된 이력이 있는 경우입니다.
 
 deploy가 진행 중 중단되는 경우에는 `CLUSTER EXIST` 가 뜨지 않습니다.
 
@@ -407,7 +333,7 @@ re-deploy의 경우 새로 추가되는 host만 검사합니다.
 
 </br>
 
-* LocalhostIncludeError
+### Not include localhost
 
 ```
   Check status of hosts...
@@ -418,13 +344,12 @@ re-deploy의 경우 새로 추가되는 host만 검사합니다.
   | nodeC | OK               |
   | nodeD | OK               |
   +-------+------------------+
-  Must include localhost
+  Must include localhost.
 ```
 
 deploy 에서 host 정보에 localhost를 포함하지 않는 경우 에러가 발생합니다. 
 
 `localhost` 혹은 `127.0.0.1` 외에 ip주소나 hostname으로 입력해도 무방합니다.
-
 
 </br>
 </br>
@@ -435,66 +360,77 @@ deploy가 완료되었다면 클러스터 생성을 진행할 수 있습니다.
 
 </br>
 
-#### redis conf 생성
+### redis conf 생성
 
 ```
-root@flashbase:32> cluster configure
+> cluster configure
 ```
 
 `redis-<master/slave>.conf.template` 와 `redis.properties` 를 이용해 `redis-<port>.conf` 파일들을 생성합니다.  
 
 </br>
 
-#### redis 실행
+### redis 실행
+
+클러스터를 구성할 redis들을 실행합니다.
 
 ```
-root@flashbase:32> cluster start
-update_redis_conf complete
-[M] Start redis (nodeA:21200)
-[S] Start redis (nodeA:21250)
-[S] Start redis (nodeA:21251)
+> cluster start
+Check status of hosts ...
+OK
+Check cluster exist...
 
 ...
 
-[S] Start redis (nodeD:21251)
-start_redis_process complete.
-All redis process up complete
+OK
+Backup redis master log in each MASTER hosts...
+
+...
+
+Starting master nodes : nodeA : 18100 ...
+
+...
+
+Starting slave nodes : nodeA : 18150|18151 ...
+
+...
+
+Wait until all redis process up...
+cur: 0 / total: 12
+
+...
+
+cur: 12 / total: 12
+Complete all redis process up.
 ```
-
-클러스터를 구성하기 위해서 클러스터를 구성하기 위한 redis들을 먼저 실행시켜야 합니다.
-
 
 </br>
 
-#### 클러스터 구성하기
+### 클러스터 구성하기
+
+ `cluster create` 명령어를 통해 클러스터를 구성합니다.
+
+create를 시작하기 전에 구성정보를 확인하는 절차를 거칩니다.
 
 ```
-root@flashbase:32> cluster create
+> cluster create
 >>> Creating cluster
 +-------+-------+--------+
 | HOST  | PORT  | TYPE   |
 +-------+-------+--------+
-| nodeA | 21200 | MASTER |
-| nodeB | 21200 | MASTER |
-| nodeC | 21200 | MASTER |
-| nodeD | 21200 | MASTER |
-| nodeA | 21250 | SLAVE  |
-| nodeA | 21251 | SLAVE  |
-| nodeB | 21250 | SLAVE  |
-| nodeB | 21251 | SLAVE  |
-| nodeC | 21250 | SLAVE  |
-| nodeC | 21251 | SLAVE  |
-| nodeD | 21250 | SLAVE  |
-| nodeD | 21251 | SLAVE  |
+| nodeA | 18100 | MASTER |
+| nodeB | 18100 | MASTER |
+|   .       .       .    |
+|   .       .       .    |
+|   .       .       .    |
+| nodeD | 18150 | SLAVE  |
+| nodeD | 18151 | SLAVE  |
 +-------+-------+--------+
 Do you want to proceed with the create according to the above information? (y/n)
 y
 replicas: 2.00
-replicate [M] nodeA 21200 - [S] nodeA 21250
-
-...
-
-replicate [M] nodeD 21200 - [S] nodeD 21251
+replicate [M] nodeA 18100 - [S] nodeA 18150
+replicate [M] nodeD 18100 - [S] nodeD 18151
 1 / 8 meet complete.
 2 / 8 meet complete.
 
@@ -504,14 +440,9 @@ replicate [M] nodeD 21200 - [S] nodeD 21251
 create cluster complete.
 ```
 
- `cluster create` 명령어를 통해 클러스터를 구성합니다.
-
-create를 시작하기 전에 구성정보를 확인하는 절차를 거칩니다.
-
-
 </br>
 
-#### 정보 확인
+### 정보 확인
 
 다음 명령어들을 통해 클러스터 상태 및 정보를 확인할 수 있습니다.
 
@@ -524,42 +455,39 @@ create를 시작하기 전에 구성정보를 확인하는 절차를 거칩니�
 
 </br>
 
-#### 클러스터 구성 중 오류 발생 시
+### 클러스터 구성 중 오류 발생 시
 
-* ClusterError
+#### ClusterError
 
 ```
-root@flashbase:32> cluster create
+> cluster create
 >>> Creating cluster
 +-------+-------+--------+
 | HOST  | PORT  | TYPE   |
 +-------+-------+--------+
-| nodeA | 21200 | MASTER |
-| nodeB | 21200 | MASTER |
-| nodeC | 21200 | MASTER |
-| nodeD | 21200 | MASTER |
-| nodeA | 21250 | SLAVE  |
-| nodeA | 21251 | SLAVE  |
-| nodeB | 21250 | SLAVE  |
-| nodeB | 21251 | SLAVE  |
-| nodeC | 21250 | SLAVE  |
-| nodeC | 21251 | SLAVE  |
-| nodeD | 21250 | SLAVE  |
-| nodeD | 21251 | SLAVE  |
+| nodeA | 18100 | MASTER |
+| nodeB | 18100 | MASTER |
+|   .       .       .    |
+|   .       .       .    |
+|   .       .       .    |
+| nodeD | 18150 | SLAVE  |
+| nodeD | 18151 | SLAVE  |
 +-------+-------+--------+
 Do you want to proceed with the create according to the above information? (y/n)
 y
-Node nodeA:21200 is already in a cluster
+Node nodeA:18100 is already in a cluster
 ```
 
-해당 redis가 이미 클러스터로 구성되어 있는 경우입니다. 해당 redis를 포함하는 클러스터에서 `cluster clean` 명령어를 통해 클러스터를 해제를 먼저 해야합니다.
+해당 redis가 이미 클러스터로 구성되어 있는 경우입니다. 
 
-해당 redis들을 클러스터에서 강제로 해제시킨 후 구성하려면 `cluster restart --force --reset` 을 사용하세요.
+해당 redis를 포함하는 클러스터에서 `cluster clean --all` 명령어를 통해 클러스터를 해제를 먼저 해야합니다.
+
+해당 redis들을 클러스터에서 강제로 해제시킨 후 구성하려면 `cluster restart --reset` 을 사용하세요.
 
 
 </br>
 
-* Connection Error
+#### Connection Error
 
 ```
 root@flashbase:32> cluster create
@@ -567,27 +495,20 @@ root@flashbase:32> cluster create
 +-------+-------+--------+
 | HOST  | PORT  | TYPE   |
 +-------+-------+--------+
-| nodeA | 21200 | MASTER |
-| nodeB | 21200 | MASTER |
-| nodeC | 21200 | MASTER |
-| nodeD | 21200 | MASTER |
-| nodeA | 21250 | SLAVE  |
-| nodeA | 21251 | SLAVE  |
-| nodeB | 21250 | SLAVE  |
-| nodeB | 21251 | SLAVE  |
-| nodeC | 21250 | SLAVE  |
-| nodeC | 21251 | SLAVE  |
-| nodeD | 21250 | SLAVE  |
-| nodeD | 21251 | SLAVE  |
+| nodeA | 18100 | MASTER |
+| nodeB | 18100 | MASTER |
+|   .       .       .    |
+|   .       .       .    |
+|   .       .       .    |
+| nodeD | 18150 | SLAVE  |
+| nodeD | 18151 | SLAVE  |
 +-------+-------+--------+
 Do you want to proceed with the create according to the above information? (y/n)
 y
-nodeD:21200 - [Errno 111] Connection refused
+nodeD:18100 - [Errno 111] Connection refused
 ```
 
 해당 redis가 실행중이 아닌 경우 발생합니다. `cluster start` 명령어를 통해 먼저 redis를 실행시켜야 합니다.
-
-
 
 </br>
 </br>
@@ -596,24 +517,22 @@ nodeD:21200 - [Errno 111] Connection refused
 
 flashbase version의 변경은 `deploy` 명령어를 통해 진행할 수 있습니다.
 
-
 </br>
 
-#### Deploy
+### Deploy
 
 ```
-root@flashbase:-> c 32 // alias of 'cluster use 32'
-root@flashbase:32> deploy
-(Watch out) Cluster 32 is already deployed. Do you want to deploy again? (y/n) [n]
+> c 1 // alias of 'cluster use 1'
+> deploy
+(Watch out) Cluster 1 is already deployed. Do you want to deploy again? (y/n) [n]
 y
 ```
 
 > 클러스터에 접속하지 않고 클러스터 번호를 같이 입력해도 됩니다.
 >
 > ```
-> root@flashbase:-> deploy 32
+> > deploy 1
 > ```
-
 
 </br>
 
@@ -633,11 +552,9 @@ you can also add file in list by copy to '$FBPATH/releases/'
 
 installer를 선택하거나 파일경로 혹은 url을 입력하세요.
 
-
-
 </br>
 
-#### Restore
+### Restore
 
 ```
 Do you want to restore conf? (y/n)
@@ -646,10 +563,11 @@ y
 
 현재 설정값을 그대로 사용할 것인지 물어봅니다. `y` 를 선택해주세요.
 
-
 </br>
 
-#### 정보확인 및 진행
+### 정보확인 및 진행
+
+정보확인 후 클러스터와 conf의 백업과 함께 update가 진행됩니다.
 
 ```
 +-----------------+---------------------------------------------+
@@ -660,8 +578,8 @@ y
 |                 | nodeB                                       |
 |                 | nodeC                                       |
 |                 | nodeD                                       |
-| master ports    | 21200                                       |
-| slave ports     | 21250-21251                                 |
+| master ports    | 18100                                       |
+| slave ports     | 18150-18151                                 |
 | ssd count       | 3                                           |
 | redis data path | ~/sata_ssd/ssd_                             |
 | redis db path   | ~/sata_ssd/ssd_                             |
@@ -682,28 +600,25 @@ Checking for cluster exist...
 +------+--------+
 | HOST | STATUS |
 +------+--------+
-Backup conf of cluster 32...
-OK, cluster_32_conf_bak_<time-stamp>
-Backup info of cluster 32 at nodeA...
-OK, cluster_32_bak_<time-stamp>
-Backup info of cluster 32 at nodeB...
-OK, cluster_32_bak_<time-stamp>
-Backup info of cluster 32 at nodeC...
-OK, cluster_32_bak_<time-stamp>
-Backup info of cluster 32 at nodeD...
-OK, cluster_32_bak_<time-stamp>
+Backup conf of cluster 1...
+OK, cluster_1_conf_bak_<time-stamp>
+Backup info of cluster 1 at nodeA...
+OK, cluster_1_bak_<time-stamp>
+Backup info of cluster 1 at nodeB...
+OK, cluster_1_bak_<time-stamp>
+Backup info of cluster 1 at nodeC...
+OK, cluster_1_bak_<time-stamp>
+Backup info of cluster 1 at nodeD...
+OK, cluster_1_bak_<time-stamp>
 Transfer installer and execute...
-nodeA
-nodeB
-nodeC
-nodeD
+ - nodeA
+ - nodeB
+ - nodeC
+ - nodeD
 Sync conf...
-Complete to deploy cluster 32
-Cluster 32 selected.
-root@flashbase:32>
+Complete to deploy cluster 1.
+Cluster 1 selected.
 ```
-
-정보확인 후 클러스터와 conf의 백업과 함께 update가 진행됩니다.
 
 클러스터 백업 경로: `<base-directory>/backup/cluster_<cluster-id>_bak_<time-stamp>`
 
@@ -712,10 +627,10 @@ conf 백업 경로: `$FBAPTH/conf_backup/cluster_<cluster-id>_conf_bak_<time-sta
 
 </br>
 
-#### restart
+### restart
 
 ```
-root@flashbase:32> cluster restart
+> cluster restart
 ```
 
 `cluster restart` 를 통해 재시작을 해주면 완료됩니다.
@@ -731,25 +646,36 @@ deploy가 완료된 클러스터에서 `deploy` 명령어를 통해 다시 진�
 
 </br>
 
-#### Deploy
+### Stop
+
+host, port 등 정보가 변경된다면 deploy 이전에 반드시 중지 및 정보 리셋이 필요합니다.
 
 ```
-root@flashbase:-> c 32 // alias of 'cluster use 32'
-root@flashbase:32> deploy
-(Watch out) Cluster 32 is already deployed. Do you want to deploy again? (y/n) [n]
+> cluster stop
+> cluster clean --all
+```
+
+</br>
+
+### Deploy
+
+```
+> c 1 // alias of 'cluster use 1'
+> deploy
+(Watch out) Cluster 1 is already deployed. Do you want to deploy again? (y/n) [n]
 y
 ```
 
 > 클러스터에 접속하지 않고 argument로 클러스터 번호를 주어도 됩니다.
 >
 > ```
-> root@flashbase:-> deploy 32
+> > deploy 1
 > ```
 
 
 </br>
 
-#### Installer
+### Installer
 
 ```
 Select installer
@@ -770,7 +696,7 @@ you can also add file in list by copy to '$FBPATH/releases/'
 
 </br>
 
-#### Restore
+### Restore
 
 ```
 Do you want to restore conf? (y/n)
@@ -782,18 +708,18 @@ n
 
 </br>
 
-#### Setup Info
+### Setup Info
 
 ```
 #!/bin/bash
 
 ## Master hosts and ports
 export SR2_REDIS_MASTER_HOSTS=( "nodeA" "nodeB" "nodeC" "nodeD" )
-export SR2_REDIS_MASTER_PORTS=( 21200 )
+export SR2_REDIS_MASTER_PORTS=( 18100 )
 
 ## Slave hosts and ports (optional)
 export SR2_REDIS_SLAVE_HOSTS=( "nodeA" "nodeB" "nodeC" "nodeD" )
-export SR2_REDIS_SLAVE_PORTS=( $(seq 21250 21251) )
+export SR2_REDIS_SLAVE_PORTS=( $(seq 18150 18151) )
 
 ## only single data directory in redis db and flash db
 ## Must exist below variables; 'SR2_REDIS_DATA', 'SR2_REDIS_DB_PATH' and 'SR2_FLASH_DB_PATH'
@@ -831,7 +757,9 @@ y
 
 </br>
 
-#### 정보확인 및 진행
+### 정보확인 및 진행
+
+정보확인 후 클러스터와 conf의 백업과 함께 update가 진행됩니다.
 
 ```
 +-----------------+---------------------------------------------+
@@ -842,8 +770,8 @@ y
 |                 | nodeB                                       |
 |                 | nodeC                                       |
 |                 | nodeD                                       |
-| master ports    | 21200                                       |
-| slave ports     | 21250-21251                                 |
+| master ports    | 18100                                       |
+| slave ports     | 18150-18151                                 |
 | ssd count       | 3                                           |
 | redis data path | ~/sata_ssd/ssd_                             |
 | redis db path   | ~/sata_ssd/ssd_                             |
@@ -860,23 +788,20 @@ Check status of nodes...
 | nodeC     | OK     |
 | nodeD     | OK     |
 +-----------+--------+
-Backup conf of cluster 32...
-OK, cluster_32_conf_bak_<time-stamp>
-Backup info of cluster 32 at nodeA...
-OK, cluster_32_bak_<time-stamp>
-Backup info of cluster 32 at nodeB...
-OK, cluster_32_bak_<time-stamp>
-Backup info of cluster 32 at nodeC...
-OK, cluster_32_bak_<time-stamp>
-Backup info of cluster 32 at nodeD...
-OK, cluster_32_bak_<time-stamp>
+Backup conf of cluster 1...
+OK, cluster_1_conf_bak_<time-stamp>
+Backup info of cluster 1 at nodeA...
+OK, cluster_1_bak_<time-stamp>
+Backup info of cluster 1 at nodeB...
+OK, cluster_1_bak_<time-stamp>
+Backup info of cluster 1 at nodeC...
+OK, cluster_1_bak_<time-stamp>
+Backup info of cluster 1 at nodeD...
+OK, cluster_1_bak_<time-stamp>
 Transfer installer and execute...
-Complete to deploy cluster 32
-Cluster 32 selected.
-root@flashbase:32>
+Complete to deploy cluster 1.
+Cluster 1 selected.
 ```
-
-정보확인 후 클러스터와 conf의 백업과 함께 update가 진행됩니다.
 
 클러스터 백업 경로: `<base-directory>/backup/cluster_<cluster-id>_bak_<time-stamp>`
 

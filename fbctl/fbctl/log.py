@@ -121,17 +121,21 @@ else:
 def set_level(level):
     level_list = ['debug', 'info', 'warning', 'error', 'warn']
     if level not in level_list:
-        logger.error("Unavailable log level '{}'. Select in {}".format(level, level_list))
+        level_list.remove('warn')
+        logger.error("LogLevelError: '{}'. Select in {}".format(
+            level,
+            level_list
+        ))
         return
     code = get_log_code(level)
     stream_handler.level = code
-    logger.info('Changed log level to {}'.format(level))
+    print(color.white('Changed log level to {}'.format(level)))
 
 
 def set_mode(mode):
     mode_list = ['debug', 'normal']
     if mode not in mode_list:
-        logger.error('Enable mode list: {}'.format(mode_list))
+        logger.error('ModeError: {}. Select in {}'.format(mode, mode_list))
         return
     if mode == 'debug':
         stream_handler.format_string = formatter['screen_detail']

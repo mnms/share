@@ -55,7 +55,7 @@ class Cluster(object):
         success = center.check_hosts_connection()
         if not success:
             return
-        center.wait_until_kill_all_redis_process(force)
+        center.stop_redis(force)
 
     def start(self, profile=False):
         """Start cluster
@@ -68,7 +68,7 @@ class Cluster(object):
         success = center.check_hosts_connection()
         if not success:
             return
-        # center.ensure_cluster_exist()
+        center.ensure_cluster_exist()
         master_alive_count = center.get_alive_master_redis_count()
         if master_alive_count > 0:
             msg = [
@@ -97,7 +97,7 @@ class Cluster(object):
             return
         center.wait_until_all_redis_process_up()
 
-    def create(self):
+    def create(self, yes=False):
         """Create cluster
 
         Before create cluster, all redis should be started.
@@ -107,7 +107,7 @@ class Cluster(object):
         success = center.check_hosts_connection()
         if not success:
             return
-        center.create_cluster()
+        center.create_cluster(yes)
 
     def clean(self, logs=False, nodes=False, all=False, reset=False):
         """Clean cluster
@@ -153,6 +153,7 @@ class Cluster(object):
         reset=False,
         cluster=False,
         profile=False,
+        yes=False,
     ):
         """Restart redist cluster
         :param force: If true, send SIGKILL. If not, send SIGINT
@@ -172,23 +173,27 @@ class Cluster(object):
             logger.error("option '--cluster' can use only 'True' or 'False'")
             return
         if not reset and cluster:
-            msg = [
-                "option '--cluster' can used ",
-                "only with option '--reset'",
-            ]
-            logger.error(''.join(msg))
+            msg = "option '--cluster' can used only with option '--reset'"
+            logger.error(msg)
+            return
+        if not cluster and yes:
+            msg = "option '--yes' can used only with option '--cluster'"
+            logger.error(msg)
             return
         center = Center()
         center.update_ip_port()
         success = center.check_hosts_connection()
         if not success:
             return
-        self.stop(force=force_stop)
+        center.stop_redis(force=force_stop)
         if reset:
-            self.clean(reset=reset)
-        self.start(profile)
+            center.remove_generated_config()
+            center.remove_data()
+            center.remove_nodes_conf()
+            center.configure_redis()
+        self.start()
         if cluster:
-            self.create()
+            self.create(yes=yes)
 
     def edit(self, target='main', master=False, slave=False):
         """Open vim to edit config file"""
@@ -224,14 +229,27 @@ class Cluster(object):
             target_path = path_of_fb['redis_properties']
         if target == 'thrift':
             target_path = path_of_fb['thrift_properties']
-        editor.edit(target_path, syntax='sh')
+        target_tmp_path = target_path + '.tmp'
+        if os.path.exists(target_tmp_path):
+            q = 'There is a history of modification. Do you want to load?'
+            yes = ask_util.askBool(q)
+            if not yes:
+                os.remove(target_tmp_path)
+        if not os.path.exists(target_tmp_path):
+            shutil.copy(target_path, target_tmp_path)
+        editor.edit(target_tmp_path, syntax='sh')
+        if target == 'main':
+            config.ensure_host_not_changed(target_tmp_path)
+        shutil.copy(target_tmp_path, target_path)
+        os.remove(target_tmp_path)
         center = Center()
         center.update_ip_port()
         success = center.check_hosts_connection()
         if not success:
             return
-        center.sync_conf(show_result=True)
-        logger.info('Complete edit')
+        success = center.sync_conf()
+        if success:
+            logger.info('Complete edit')
 
     def configure(self):
         center = Center()
@@ -247,10 +265,10 @@ class Cluster(object):
         logger.debug('rowcount')
         # open-redis-cli-all info Tablespace | grep totalRows | awk -F ',
         # ' '{print $4}' | awk -F '=' '{sum += $2} END {print sum}'
-        ip_list = config.get_node_ip_list()
+        host_list = config.get_master_host_list()
         port_list = config.get_master_port_list()
         outs, meta = RedisCliUtil.command_raw_all(
-            'info Tablespace', ip_list, port_list)
+            'info Tablespace', host_list, port_list)
         lines = outs.splitlines()
         key = 'totalRows'
         filtered_lines = (filter(lambda x: key in x, lines))

@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='fbctl',
-    version='0.1.1',
+    version='0.1.2',
     description='flashbase command line tool',
     author='dudaji',
     author_email='shhong@dudaji.com',

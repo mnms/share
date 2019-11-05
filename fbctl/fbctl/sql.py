@@ -588,16 +588,17 @@ class FbSql(object):
 
         while True:
             try:
-                p = utils.TermColor.green(get_sql_prompt(self.user))
-                print(p)
-                text = session.prompt(multiline=True, key_bindings=bindings)
+                p = get_sql_prompt()
+                text = session.prompt(p, multiline=True, key_bindings=bindings)
                 text = text.split(';')[0].strip()
                 if text == 'exit':
+                    logger.info('Exit sql mode')
                     break
                 self.handle(text)
             except KeyboardInterrupt:
                 continue
             except EOFError:
+                logger.info('Exit sql mode')
                 break
 
     def _handle_help(self):

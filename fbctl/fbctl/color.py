@@ -20,6 +20,7 @@ ENDC = '\033[0m'
 BOLD = '\033[1m'
 UNDERLINE = '\033[4m'
 
+
 def green(msg):
     return GREEN + msg + ENDC
 
@@ -31,6 +32,7 @@ def red(msg):
 def yellow(msg):
     return YELLOW + msg + ENDC
 
+
 def blue(msg):
     return BLUE + msg + ENDC
 
@@ -41,3 +43,7 @@ def cyan(msg):
 
 def magenta(msg):
     return MAGENTA + msg + ENDC
+
+
+def white(msg):
+    return WHITE + msg + ENDC

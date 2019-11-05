@@ -17,7 +17,7 @@ from rediscli_util import RedisCliUtil
 from redistrib2 import command as trib
 from utils import get_ip_port_tuple_list, make_export_envs
 import utils
-from deploy_util import DeployUtil
+from deploy_util import DeployUtil, DEPLOYED
 from terminaltables import AsciiTable
 import ask_util
 import color
@@ -27,6 +27,8 @@ from exceptions import (
     HostConnectionError,
     HostNameError,
     FileNotExistError,
+    ClusterRedisError,
+    ClusterNotExistError,
 )
 import color
 
@@ -70,18 +72,29 @@ class Center(object):
         if no_cluster_flag:
             utils.print_table(meta)
             logger.error('Cancel sync conf')
-            return
+            return False
         meta = [['HOST', 'STATUS']]
+        error_flag = False
         for host in self.all_host_list:
             if net.get_ip(host) in my_address:
                 meta.append([host, color.green('OK')])
                 continue
             client = get_ssh(host)
-            net.copy_dir_to_remote(client, conf_path, conf_path)
-            client.close()
-            meta.append([host, color.green('OK')])
-        if show_result:
+            try:
+                net.copy_dir_to_remote(client, conf_path, conf_path)
+                meta.append([host, color.green('OK')])
+            except BaseException as ex:
+                logger.debug(ex)
+                meta.append([host, color.red('FAIL')])
+                error_flag = True
+            finally:
+                client.close()
+        if error_flag or show_result:
             utils.print_table(meta)
+        if error_flag:
+            logger.error('Cancel sync conf')
+            return False
+        return True
 
     def configure_redis(self):
         logger.debug('configure redis')
@@ -244,28 +257,6 @@ class Center(object):
             ))
             self.run_redis_process(host, s_port, profile, current_time)
 
-    def wait_until_kill_all_redis_process(self, force=False):
-        """Wait until kill all redis process.
-
-        After calculating live process count, send KILL signal
-
-        :param force: If true, send SIGKILL. If not, send SIGINT
-        """
-
-        logger.info('wait_until_kill_all_redis_process start.')
-        max_try_count = 10
-        for i in range(0, max_try_count):
-            alive_count = self.get_alive_all_redis_count()
-            logger.info(
-                'Alive redis process: %s (try count: %s)' % (alive_count, i))
-            if alive_count > 0:
-                self.stop_redis(force)
-                time.sleep(3)
-            else:
-                logger.info('wait_until_kill_all_redis_process complete.')
-                return
-        raise Exception('wait_until_kill_all_redis_process', 'max try error')
-
     def get_alive_redis_count(self, hosts, ports):
         logger.debug('get_alive_redis_count')
         logger.debug('hosts={}, ports={}'.format(hosts, ports))
@@ -310,12 +301,12 @@ class Center(object):
         total_s = self.get_alive_slave_redis_count()
         return total_m + total_s
 
-    def create_cluster(self):
+    def create_cluster(self, yes=False):
         """Create cluster
         """
         logger.info('>>> Creating cluster')
         logger.debug('create cluster start')
-        result = self.confirm_node_port_info()
+        result = self.confirm_node_port_info(skip=yes)
         if not result:
             logger.warn('Cancel create')
             return
@@ -330,7 +321,7 @@ class Center(object):
             self._replicate()
         logger.info('create cluster complete.')
 
-    def confirm_node_port_info(self):
+    def confirm_node_port_info(self, skip=False):
         replicas = config.get_replicas(self.cluster_id)
         meta = [['HOST', 'PORT', 'TYPE']]
         for node in self.master_host_list:
@@ -341,76 +332,54 @@ class Center(object):
                 meta.append([node, port, 'SLAVE'])
         table = AsciiTable(meta)
         print(table.table)
+        print('replicas: {}\n'.format(replicas))
+        if skip:
+            return True
         msg = [
-            'replicas: {}\n'.format(replicas),
             'Do you want to proceed with the create ',
             'according to the above information?',
         ]
         yes = ask_util.askBool(''.join(msg), ['y', 'n'])
         return yes
 
-    def check_port_available(self):
-        all_enable = True
-        logger.info('Check status of ports for master...')
-        meta = [['HOST', 'PORT', 'STATUS']]
-        for node in self.master_host_list:
-            for port in self.master_port_list:
-                result, status = net.is_port_empty(node, port)
-                if not result:
-                    all_enable = False
-                    meta.append([node, port, color.red(status)])
-                    continue
-                meta.append([node, port, color.green(status)])
-        table = AsciiTable(meta)
-        print(table.table)
-
-        if self.slave_host_list:
-            logger.info('Check status of ports for slave...')
-            meta = [['HOST', 'PORT', 'STATUS']]
-            for node in self.slave_host_list:
-                for port in self.slave_port_list:
-                    result, status = net.is_port_empty(node, port)
-                    if not result:
-                        all_enable = False
-                        meta.append([node, port, color.red(status)])
-                        continue
-                    meta.append([node, port, color.green(status)])
-            table = AsciiTable(meta)
-            print(table.table)
-        return all_enable
+    def stop_redis_process(self, host, ports, force=False):
+        """Stop redis process
+        """
+        logger.debug('stop_redis_process')
+        signal = 'SIGKILL' if force else 'SIGINT'
+        ps_list_command = get_ps_list_command(ports)
+        pid_list = "{} | awk '{{print $2}}'".format(ps_list_command)
+        command = 'kill -s {} $({})'.format(signal, pid_list)
+        client = get_ssh(host)
+        ssh_execute(client, command, allow_status=[-1, 0, 1, 2, 123, 130])
+        client.close()
 
     def stop_redis(self, force=False):
         """Stop redis
 
         :param force: If true, send SIGKILL. If not, send SIGINT
         """
-        logger.debug('stop_all_redis start')
-        # d = self.get_ip_port_dict_using_cluster_nodes_cmd()
-        signal = 'SIGKILL' if force else 'SIGINT'
-        ps_list_command = get_ps_list_command(self.master_port_list)
-        pid_list = "{} | awk '{{print $2}}'".format(ps_list_command)
-        command = 'kill -s {} $({})'.format(signal, pid_list)
+        logger.debug('stop_redis')
         logger.info('Stopping master cluster of redis...')
-        for host in self.master_host_list:
-            client = get_ssh(host)
-            ssh_execute(
-                client=client,
-                command=command,
-                allow_status=[-1, 0, 1, 2, 123, 130]
-            )
-        ps_list_command = get_ps_list_command(self.slave_port_list)
-        pid_list = "{} | awk '{{print $2}}'".format(ps_list_command)
-        command = 'kill -s {} $({})'.format(signal, pid_list)
         if self.slave_host_list:
             logger.info('Stopping slave cluster of redis...')
-        for host in self.slave_host_list:
-            client = get_ssh(host)
-            ssh_execute(
-                client=client,
-                command=command,
-                allow_status=[-1, 0, 1, 2, 123, 130]
-            )
-        logger.debug('stop_redis, send ps kill signal to redis processes')
+        total_count = len(self.master_host_list) * len(self.master_port_list)
+        total_count += len(self.slave_host_list) * len(self.slave_port_list)
+        max_try_count = 10
+        while max_try_count > 0:
+            alive_count = self.get_alive_all_redis_count()
+            logger.info('cur: {} / total: {}'.format(alive_count, total_count))
+            if alive_count <= 0:
+                logger.info('Complete all redis process down')
+                return True
+            max_try_count -= 1
+            if max_try_count % 3 == 0:
+                for host in self.master_host_list:
+                    self.stop_redis_process(host, self.master_port_list, force)
+                for host in self.slave_host_list:
+                    self.stop_redis_process(host, self.slave_port_list, force)
+            time.sleep(1)
+        raise ClusterRedisError('Fail to stop redis: max try exceed')
 
     def create_redis_data_directory(self):
         """ create directory SR2_REDIS_DATA, SR2_FLASH_DB_PATH
@@ -446,23 +415,26 @@ class Center(object):
         total_count = len(self.master_host_list) * len(self.master_port_list)
         total_count += len(self.slave_host_list) * len(self.slave_port_list)
         max_try_count = 10
-        logger.info('cur: 0 / total: {}'.format(total_count))
         while max_try_count > 0:
+            alive_count = self.get_alive_all_redis_count()
+            logger.info('cur: {} / total: {}'.format(alive_count, total_count))
+            if alive_count >= total_count:
+                logger.info('Complete all redis process up')
+                if alive_count != total_count:
+                    logger.warning('ClusterRedisWarning: too many process up')
+                return True
             time.sleep(1)
             max_try_count -= 1
-            alive_count = self.get_alive_all_redis_count()
-            logger.info('cur: {} / total: {}'.format(
-                alive_count,
-                total_count
-            ))
-            if alive_count >= total_count:
-                logger.info('All redis process up complete')
-                return True
-        return False
+            msg = [
+                'Fail to start redis: max try exceed',
+                "Recommendation Command: 'monitor'"
+            ]
+        # raise ClusterRedisError('Fail to start redis: max try exceed')
+        raise ClusterRedisError('\n'.join(msg))
 
     def check_hosts_connection(self, hosts=None, show_result=False):
         logger.debug('check hosts connection')
-        logger.info('Check status of hosts ...')
+        logger.info('Check status of hosts...')
         if hosts is None:
             self.update_ip_port()
             hosts = self.all_host_list
@@ -496,7 +468,7 @@ class Center(object):
         return True
 
     def check_include_localhost(self, hosts):
-        logger.debug('Check include localhost')
+        logger.debug('check_include_localhost')
         for host in hosts:
             try:
                 ip_addr = socket.gethostbyname(host)
@@ -517,7 +489,7 @@ class Center(object):
         ssh_execute(client, command, [0, 1])
 
     def remove_nodes_conf(self):
-        logger.info('Removing master node configuration in')
+        logger.info('Removing master node configuration')
         for host in self.master_host_list:
             logger.info(' - {}'.format(host))
             client = get_ssh(host)
@@ -526,7 +498,7 @@ class Center(object):
             client.close()
 
         if self.slave_host_list:
-            logger.info('Removing slave node configuration in')
+            logger.info('Removing slave node configuration')
         for host in self.slave_host_list:
             logger.info(' - {}'.format(host))
             client = get_ssh(host)
@@ -607,27 +579,6 @@ class Center(object):
                 self._remove_data(client, port)
             client.close()
 
-    @staticmethod
-    def _get_ip_port_dict_using_cluster_nodes_cmd():
-        def mute_formatter(outs):
-            pass
-
-        outs = RedisCliUtil.command(
-            sub_cmd='cluster nodes',
-            formatter=mute_formatter)
-        lines = outs.splitlines()
-        d = {}
-        for line in lines:
-            rows = line.split(' ')
-            addr = rows[1]
-            if 'connected' in rows:
-                (host, port) = addr.split(':')
-                if host not in d:
-                    d[host] = [port]
-                else:
-                    d[host].append(port)
-        return d
-
     def update_ip_port(self):
         logger.debug('update ip port')
         self.cluster_id = config.get_cur_cluster_id()
@@ -668,13 +619,44 @@ class Center(object):
             conf_path = '{}/redis-{}.conf'.format(sr2_redis_conf, port)
             if not net.is_exist(client, conf_path):
                 raise FileNotExistError(conf_path, host=host)
-            command = '{env}; {redis_server} {conf} >> {log_path} &'.format(
+            cmd = '{env}; {redis_server} {conf} >> {log_path} 2>&1 &'.format(
                 env=make_export_envs(host, port),
                 redis_server=' '.join(redis_run_cmd),
                 conf=conf_path,
                 log_path=path_join(sr2_redis_log, log_file_name),
             )
-            ssh_execute(client, command)
+            ssh_execute(client, cmd)
+
+    def ensure_cluster_exist(self):
+        logger.debug('ensure_cluster_exist')
+        logger.info('Check cluster exist...')
+        for host in self.all_host_list:
+            logger.info(' - {}'.format(host))
+            deploy_state = DeployUtil().get_state(self.cluster_id, host)
+            if deploy_state != DEPLOYED:
+                raise ClusterNotExistError(self.cluster_id, host=host)
+        logger.info('OK')
+
+    @staticmethod
+    def _get_ip_port_dict_using_cluster_nodes_cmd():
+        def mute_formatter(outs):
+            pass
+
+        outs = RedisCliUtil.command(
+            sub_cmd='cluster nodes',
+            formatter=mute_formatter)
+        lines = outs.splitlines()
+        d = {}
+        for line in lines:
+            rows = line.split(' ')
+            addr = rows[1]
+            if 'connected' in rows:
+                (host, port) = addr.split(':')
+                if host not in d:
+                    d[host] = [port]
+                else:
+                    d[host].append(port)
+        return d
 
     def _get_master_slave_pair_list(self):
         pl = []

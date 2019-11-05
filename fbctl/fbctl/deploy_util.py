@@ -54,9 +54,6 @@ class DeployUtil(object):
         client = get_ssh(host)
         sftp = get_sftp(client)
 
-        if not net.is_exist(client, installer_path):
-            raise FileNotExistError(installer_path)
-
         if not net.is_dir(client, path_of_fb['release_path']):
             logger.debug("Not exist releases directory at '{}'".format(host))
             sftp.mkdir(path_of_fb['release_path'])

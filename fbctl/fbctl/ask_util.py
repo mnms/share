@@ -396,3 +396,28 @@ def props(cluster_id, save):
     ret['prefix_of_rdbp'] = prefix_of_rdbp(save)
     ret['prefix_of_fdbp'] = prefix_of_fdbp(save)
     return ret
+
+
+def host_for_monitor(host_list):
+    formatted = []
+    for i, v in enumerate(host_list):
+        formatted.append('    ({}) {}'.format(i + 1, v))
+    msg = [
+        'Select host',
+        '',
+        '   [ HOST LIST ]',
+        '{}\n'.format('\n'.join(formatted)),
+        'Please enter the number you want to see log.',
+    ]
+    target_num = int(askInt('\n'.join(msg), default='1'))
+    while True:
+        if 0 < target_num and target_num <= len(host_list):
+            break
+        msg = [
+            'Choose a number ',
+            'between 1 and {}'.format(len(host_list)),
+            ', please try again'
+        ]
+        logger.error(''.join(msg))
+        target_num = int(askInt(''))
+    return host_list[target_num - 1]
