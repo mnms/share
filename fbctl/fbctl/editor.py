@@ -1,5 +1,5 @@
 import os
-from subprocess import call
+import subprocess
 
 EDITOR = os.environ.get('EDITOR', 'vim')
 
@@ -14,4 +14,4 @@ def edit(f, syntax=None):
         cmd.append('-c "set syntax={}"'.format(syntax))
     cmd.append(f)
     cmd = ' '.join(cmd)
-    call(cmd, shell=True)
+    subprocess.call(cmd, shell=True)

@@ -1,13 +1,13 @@
 from __future__ import print_function
 
+import os
 import fileinput
 import random
 import subprocess
-from os.path import join as path_join
 
-import config
-import utils
-from log import logger
+from fbctl import config
+from fbctl import utils
+from fbctl.log import logger
 
 
 class RedisCliUtil(object):
@@ -31,7 +31,13 @@ class RedisCliUtil(object):
 
     @staticmethod
     def command(
-        sub_cmd, cluster_id=-1, mute=False, formatter=None, host=None, port=0):
+        sub_cmd,
+        cluster_id=-1,
+        mute=False,
+        formatter=None,
+        host=None,
+        port=0
+    ):
         """Send redis-cli command
 
         :param sub_cmd: sub command
@@ -66,10 +72,24 @@ class RedisCliUtil(object):
         """
         if cluster_id < 0:
             cluster_id = config.get_cur_cluster_id()
-        ip_list = config.get_node_ip_list(cluster_id)
-        port_list = config.get_master_port_list(cluster_id)
+        master_host_list = config.get_master_host_list(cluster_id)
+        master_port_list = config.get_master_port_list(cluster_id)
+        slave_host_list = config.get_slave_host_list(cluster_id)
+        slave_port_list = config.get_slave_port_list()
         outs, meta = RedisCliUtil.command_raw_all(
-            sub_cmd, ip_list, port_list)
+            sub_cmd,
+            master_host_list,
+            master_port_list
+        )
+        logger.debug(outs)
+        buf = meta[:]
+        outs, meta = RedisCliUtil.command_raw_all(
+            sub_cmd,
+            slave_host_list,
+            slave_port_list
+        )
+        logger.debug(outs)
+        buf += meta[1:]
         if formatter:
             formatter(meta)
         else:
@@ -92,7 +112,7 @@ class RedisCliUtil(object):
         ip, port = target
         # logger.info('redis-cli connect to %s:%s' % (ip, port))
         outs = ''
-        redis_cli = path_join(config.get_tsr2_home(), 'bin', 'redis-cli')
+        redis_cli = os.path.join(config.get_tsr2_home(), 'bin', 'redis-cli')
         env = utils.make_export_envs(ip, port)
         command = '{env}; {redis_cli} -h {ip} -p {port} {sub_cmd}'.format(
             env=env,
@@ -102,6 +122,7 @@ class RedisCliUtil(object):
             sub_cmd=sub_cmd)
         try:
             stdout = subprocess.check_output(command, shell=True)
+            stdout = stdout.decode('utf-8')
             outs += stdout
         except subprocess.CalledProcessError as ex:
             logger.debug('exception: %s' % str(ex))
@@ -124,16 +145,18 @@ class RedisCliUtil(object):
         meta = [['addr', 'stdout']]
         for ip, port in targets:
             env = utils.make_export_envs(ip, port)
-            redis_cli = path_join(config.get_tsr2_home(), 'bin', 'redis-cli')
-            command = '{env}; {redis_cli} -c -h {ip} -p {port} {sub_cmd}'.format(
-                redis_cli=redis_cli,
+            ex_cmd = os.path.join(config.get_tsr2_home(), 'bin', 'redis-cli')
+            command = '{env}; {ex_cmd} -c -h {ip} -p {port} {sub_cmd}'.format(
+                env=env,
+                ex_cmd=ex_cmd,
                 ip=ip,
                 port=port,
-                env=env,
-                sub_cmd=sub_cmd)
+                sub_cmd=sub_cmd
+            )
             logger.debug('subprocess: %s' % command)
             try:
                 stdout = subprocess.check_output(command, shell=True)
+                stdout = stdout.decode('utf-8')
                 outs += stdout
                 meta.append(['%s:%s' % (ip, port), stdout])
             except subprocess.CalledProcessError as ex:

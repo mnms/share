@@ -2,12 +2,11 @@ from __future__ import print_function
 
 from terminaltables import AsciiTable
 
-import config
-from center import Center
-from deploy_util import DeployUtil
-from rediscli_util import RedisCliUtil
-from utils import TableReport, print_table
-import cluster_util
+from fbctl import config
+from fbctl import utils
+from fbctl.center import Center
+from fbctl.rediscli_util import RedisCliUtil
+from fbctl.utils import TableReport
 
 
 class RedisCliInfo(object):
@@ -89,7 +88,7 @@ class RedisCliConfig(object):
         if all:
             RedisCliUtil.command_all(
                 sub_cmd=sub_cmd,
-                formatter=print_table)
+                formatter=utils.print_table)
         else:
             RedisCliUtil.command(
                 sub_cmd=sub_cmd,
@@ -110,7 +109,7 @@ class RedisCliConfig(object):
         sub_cmd = 'config set {key} {value}'.format(key=key, value=value)
         if all:
             RedisCliUtil.command_all(
-                sub_cmd=sub_cmd, formatter=print_table)
+                sub_cmd=sub_cmd, formatter=utils.print_table)
         else:
             RedisCliUtil.command(
                 sub_cmd=sub_cmd,

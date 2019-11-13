@@ -1,40 +1,21 @@
 import os
-from os.path import join as path_join
 import re
 
-from ask import askBool, askInt, askPassword, ask
+# pylint: disable=unused-import
+# using like 'ask_util.askBool'
+from ask import ask, askInt, askBool
 
-from log import logger
-import config
-import net
+from fbctl.log import logger
+from fbctl import config
+from fbctl import net
+from fbctl import utils
+
 
 START_PORT = 18000
 MASTER_OFFSET = 100
 SLAVE_OFFSET = 50
 PORT_MININUM = 18000
 PORT_MAXIMUM = 65535
-
-
-def nodes(save, default=None):
-    logger.debug('ask hosts')
-    cli_config = config.get_cli_config()
-    if not default:
-        default = ['127.0.0.1']
-        try:
-            d = cli_config['default_nodes']
-            if d:
-                default = d
-        except KeyError:
-            pass
-    result = ask(
-        text='Please type host list separated by comma(,)',
-        default=', '.join(default))
-    result = map(lambda x: x.strip(), result.split(','))
-    if save:
-        cli_config['default_nodes'] = result
-        config.save_cli_config(cli_config)
-    logger.info('OK, {}'.format(result))
-    return result
 
 
 def hosts(save, default=None):
@@ -44,7 +25,7 @@ def hosts(save, default=None):
         default = deploy_history['hosts']
     q = 'Please type host list separated by comma(,)'
     result = ask(q, default=', '.join(default))
-    result = map(lambda x: x.strip(), result.split(','))
+    result = list(map(lambda x: x.strip(), result.split(',')))
     if save:
         deploy_history['hosts'] = result
         config.save_deploy_history(deploy_history)
@@ -93,11 +74,12 @@ def installer():
 
     result = ask('\n'.join(msg))
     while True:
-        if installer_list and result.decode('utf-8').isdecimal():
+        result = result.strip()
+        if installer_list and utils.is_number(result):
             # case: select in list
             result = int(result) - 1
             if result in range(0, len(installer_list)):
-                ret = path_join(release_path, installer_list[result])
+                ret = os.path.join(release_path, installer_list[result])
                 logger.debug('Select insaller in list: {}'.format(ret))
                 logger.info('OK, {}'.format(installer_list[result]))
                 return os.path.expanduser(ret)
@@ -122,7 +104,7 @@ def installer():
             # case: type url
             url = result
             file_name = url.split('?')[0].split('/')[-1]
-            installer_path = path_join(release_path, file_name)
+            installer_path = os.path.join(release_path, file_name)
             success = net.download_file(url, installer_path)
             if success:
                 logger.info('OK, {}'.format(file_name))
@@ -173,7 +155,7 @@ def master_ports(save, cluster_id, default_count=None):
     ]
     while True:
         result = ask(''.join(q), default=default_m_ports)
-        result = map(lambda x: x.strip(), result.split(','))
+        result = list(map(lambda x: x.strip(), result.split(',')))
         valid = True
         m_ports = set()
         pattern = re.compile('[0-9]+-[0-9]+')
@@ -189,7 +171,7 @@ def master_ports(save, cluster_id, default_count=None):
                 m_ports.update(range(s, e + 1))
                 continue
             # single number
-            elif item.decode('utf-8').isdecimal():
+            elif utils.is_number(item):
                 m_ports.add(int(item))
                 continue
             else:
@@ -265,7 +247,7 @@ def slave_ports(cluster_id, m_count, replicas_count):
 
     while True:
         result = ask(''.join(q), default=default_s_ports)
-        result = map(lambda x: x.strip(), result.split(','))
+        result = list(map(lambda x: x.strip(), result.split(',')))
         valid = True
         s_ports = set()
         p = re.compile('[0-9]+-[0-9]+')
@@ -281,7 +263,7 @@ def slave_ports(cluster_id, m_count, replicas_count):
                 s_ports.update(range(s, e + 1))
                 continue
             # single number
-            elif item.decode('utf-8').isdecimal():
+            elif utils.is_number(item):
                 s_ports.add(int(item))
                 continue
             else:
@@ -293,12 +275,17 @@ def slave_ports(cluster_id, m_count, replicas_count):
             if not port_range_safe(port):
                 out_of_range.append(port)
         if out_of_range:
-            logger.error('Use port between {} and {}: {}'.format(PORT_MININUM, PORT_MAXIMUM, out_of_range))
+            logger.error('Use port between {} and {}: {}'.format(
+                PORT_MININUM,
+                PORT_MAXIMUM,
+                out_of_range
+            ))
             continue
         if valid and len(s_ports) != s_count:
+            real_replicas_count = len(s_ports) / float(m_count)
             msg = [
                 "You type replicas '{}' at first, ".format(replicas),
-                "but now count is '{}'. ".format(len(s_ports) / float(m_count)),
+                "but now count is '{}'. ".format(real_replicas_count),
                 'try again.'
             ]
             logger.error(''.join(msg))
@@ -315,7 +302,7 @@ def ssd_count(save, default=None):
     deploy_history = config.get_deploy_history()
     if not default:
         default = deploy_history['ssd_count']
-    q = 'How many sdd would you like to use?'
+    q = 'How many ssd would you like to use?'
     result = int(askInt(q, default=str(default)))
     if result <= 0:
         logger.warn("The number of ssd must be greater than 0. try again.")
@@ -340,43 +327,16 @@ def base_directory(default='~/tsr2'):
     return result
 
 
-def prefix_of_rd(save, default=None):
-    logger.debug('ask redis data path')
+def prefix_of_db_path(save, default=None):
+    logger.debug('ask_prefix_of_db_path')
     deploy_history = config.get_deploy_history()
     if not default:
-        default = deploy_history['prefix_of_rd']
-    q = 'Type prefix of {}'
-    result = ask(q.format('redis_data'), default=default)
+        default = deploy_history['prefix_of_db_path']
+    q = 'Type prefix of db path'
+    result = ask(q, default=default)
+    result = result.strip()
     if save:
-        deploy_history['prefix_of_rd'] = result
-        config.save_deploy_history(deploy_history)
-    logger.info('OK, {}'.format(result))
-    return result
-
-
-def prefix_of_rdbp(save, default=None):
-    logger.debug('ask redis db path')
-    deploy_history = config.get_deploy_history()
-    if not default:
-        default = deploy_history['prefix_of_rdbp']
-    q = 'Type prefix of {}'
-    result = ask(q.format('redis_db_path'), default=default)
-    if save:
-        deploy_history['prefix_of_rdbp'] = result
-        config.save_deploy_history(deploy_history)
-    logger.info('OK, {}'.format(result))
-    return result
-
-
-def prefix_of_fdbp(save, default=None):
-    logger.debug('ask flash db path')
-    deploy_history = config.get_deploy_history()
-    if not default:
-        default = deploy_history['prefix_of_fdbp']
-    q = 'Type prefix of {}'
-    result = ask(q.format('flash_db_path'), default=default)
-    if save:
-        deploy_history['prefix_of_fdbp'] = result
+        deploy_history['prefix_of_db_path'] = result
         config.save_deploy_history(deploy_history)
     logger.info('OK, {}'.format(result))
     return result
@@ -392,9 +352,7 @@ def props(cluster_id, save):
     s_ports = slave_ports(cluster_id, m_count, ret['replicas'])
     ret['slave_ports'] = s_ports
     ret['ssd_count'] = int(ssd_count(save))
-    ret['prefix_of_rdp'] = prefix_of_rd(save)
-    ret['prefix_of_rdbp'] = prefix_of_rdbp(save)
-    ret['prefix_of_fdbp'] = prefix_of_fdbp(save)
+    ret['prefix_of_db_path'] = prefix_of_db_path(save)
     return ret
 
 
@@ -411,7 +369,7 @@ def host_for_monitor(host_list):
     ]
     target_num = int(askInt('\n'.join(msg), default='1'))
     while True:
-        if 0 < target_num and target_num <= len(host_list):
+        if target_num > 0 and target_num <= len(host_list):
             break
         msg = [
             'Choose a number ',

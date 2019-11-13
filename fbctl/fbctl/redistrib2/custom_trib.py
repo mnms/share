@@ -153,7 +153,7 @@ class RedisTrib(object):
         self,
         src_node_ids,
         move_slot_count):
-        src_list = map(self.name_to_node, src_node_ids)
+        src_list = list(map(self.name_to_node, src_node_ids))
         moved = []
         src_list.sort(key=lambda x: len(x.info['slots']), reverse=True)
         total_slots = sum(len(node.info['slots']) for node in src_list)

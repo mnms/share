@@ -1,152 +1,161 @@
-import datetime
-import json
 import subprocess as sp
+import os
+import re
 import time
-from os.path import join as path_join
 
-from ask import askInt
-
-import config
-import utils
-from log import logger
-from net import get_ssh, ssh_execute, ssh_execute_async
+from fbctl import config
+from fbctl.log import logger
+from fbctl.exceptions import FileNotExistError, FbctlBaseError
 
 
-def _get_sh_envs(file_name):
-    source = 'source %s' % file_name
-    dump = '/usr/bin/python -c "import os, json;print json.dumps(dict(os.environ))"'
-    pipe = sp.Popen(
-        ['/bin/bash', '-c',
-         '%s ; export HIVE_PORT=${HIVE_PORT} export HIVE_HOST=${HIVE_HOST} && %s' % (
-         source, dump)],
-        stdout=sp.PIPE)
-    env = json.loads(pipe.stdout.read())
-    return env
+# pylint: disable=line-too-long, anomalous-backslash-in-string
+ROLLING_LOGFILE_REGEX = 'spark.*rolling.*org\.apache\.spark\.sql\.hive\.thriftserver\.HiveThriftServer2-1.*\.log'
+NOHUP_LOGFILE_REGEX = 'spark.*org\.apache\.spark\.sql\.hive\.thriftserver\.HiveThriftServer2-1.*\.out'
+ROLLING_LOGFILE = 'spark*rolling*org.apache.spark.sql.hive.thriftserver.HiveThriftServer2-1*.log'
+NOHUP_LOGFILE = 'spark*org.apache.spark.sql.hive.thriftserver.HiveThriftServer2-1*.out'
+
+
+def _get_env():
+    if 'SPARK_HOME' not in os.environ:
+        raise FbctlBaseError('you should set env SPARK_HOME')
+    ret = {
+        'spark_home': os.environ['SPARK_HOME'],
+    }
+    env_list = ['SPARK_BIN', 'SPARK_SBIN', 'SPARK_LOG', 'SPARK_CONF']
+    cluster_id = config.get_cur_cluster_id()
+    path_of_fb = config.get_path_of_fb(cluster_id)
+    ths_props_path = path_of_fb['thrift_properties']
+    for env in env_list:
+        cmd = 'source {}; echo ${}'.format(ths_props_path, env.upper())
+        stdout = sp.check_output(cmd, shell=True).decode('utf-8').strip()
+        ret[env.lower()] = stdout
+    return ret
+
+
+def _check_spark():
+    spark_env = _get_env()
+    if not os.path.isdir(spark_env['spark_home']):
+        raise FileNotExistError(spark_env['spark_home'])
+    if not os.path.isdir(spark_env['spark_bin']):
+        raise FileNotExistError(spark_env['spark_bin'])
+    if not os.path.isdir(spark_env['spark_sbin']):
+        raise FileNotExistError(spark_env['spark_sbin'])
+    if not os.path.isdir(spark_env['spark_log']):
+        raise FileNotExistError(spark_env['spark_log'])
+
+
+def _get_hive_opts_str():
+    ret = [
+        '--hiveconf hive.server2.thrift.bind.host=$HIVE_HOST \\',
+        '--hiveconf hive.server2.thrift.port=$HIVE_PORT \\',
+        '--master yarn \\',
+        '--executor-memory $EXECUTOR_MEMORY \\',
+        '--driver-memory $DRIVER_MEMORY \\',
+        '--num-executors $EXECUTERS \\',
+        '--conf spark.ui.port=$SPARK_UI_PORT \\',
+        '--conf spark.metrics.conf=$SPARK_METRICS \\',
+        '--conf spark.executor.cores=$EXECUTER_CORES \\',
+        '--conf spark.executor.extraClassPath=$EXECUTOR_CLASSPATH \\',
+        '--driver-class-path $DRIVER_CLASSPATH \\',
+        '--conf spark.eventLog.enabled=$EVENT_LOG_ENABLED \\',
+        '--conf spark.eventLog.dir=$EVENT_LOG_DIR \\',
+    ]
+    return '\n'.join(ret)
+
+
+def _find_files_with_regex(dir_path, pattern):
+    ret = []
+    for filename in os.listdir(dir_path):
+        if re.search(pattern, filename):
+            ret.append(filename)
+    return ret
 
 
 class ThriftServer(object):
-    def clear_meta(self):
-        """Command: thriftserver clear-meta
-
-        Clear meta data
-        """
-        key = 'thriftserver'
-        utils.clear_meta(key, {})
-
-    def edit(self):
-        """Command: thriftserver edit
-
-        Open vim to edit thriftserver
-        """
-        key = 'thriftserver'
-        utils.open_vim_editor(target=key)
-
-        meta = utils.get_meta_data_after_ensure(key, default_value={})
-        meta = json.loads(meta)
-        cur_cluster_id = str(config.get_cur_cluster_id())
-        now = datetime.datetime.now()
-        dt = now.strftime("%Y-%m-%d %H:%M:%S")
-        meta[cur_cluster_id] = dt
-        utils.set_meta_data(key, meta)
+    def beeline(self, **kargs):
+        logger.debug('thriftserver_command_beeline')
+        _check_spark()
+        cluster_id = config.get_cur_cluster_id()
+        path_of_fb = config.get_path_of_fb(cluster_id)
+        ths_props_path = path_of_fb['thrift_properties']
+        cmd = 'source {}; echo ${}'.format(ths_props_path, 'HIVE_HOST')
+        host = sp.check_output(cmd, shell=True).decode('utf-8').strip()
+        cmd = 'source {}; echo ${}'.format(ths_props_path, 'HIVE_PORT')
+        port = sp.check_output(cmd, shell=True).decode('utf-8').strip()
+        spark_env = _get_env()
+        base_cmd = '{}/beeline'.format(spark_env['spark_bin'])
+        options = {
+            'u': 'jdbc:hive2://{}:{}'.format(host, port),
+            'n': os.environ['USER']
+        }
+        for key, value in kargs.items():
+            options[key] = value
+        for key, value in options.items():
+            base_cmd += ' -{} {}'.format(key, value)
+        logger.debug(base_cmd)
+        logger.info('Connecting...')
+        os.system(base_cmd)
 
     def start(self):
         """Start thriftserver
         """
-        ip, port, cluster_id = self._get_thriftserver_info()
-        logger.debug('Start thriftserver (%s:%d)' % (ip, port))
-        client = get_ssh(ip)
-        if not client:
-            logger.info('! ssh connection fail: %s' % ip)
-            return
-        exec_file = path_join(
-            config.get_tsr2_home(cluster_id),
-            'sbin',
-            'thriftserver')
-        env = ''  # TODO: import env
-        command = '''{env} ; {exec_file} start &'''.format(
-            env=env,
-            exec_file=exec_file)
-        logger.info(command)
-        ssh_execute(
-            client=client,
-            command=command)
+        logger.debug('thriftserver_command_start')
+        _check_spark()
+        cluster_id = config.get_cur_cluster_id()
+        path_of_fb = config.get_path_of_fb(cluster_id)
+        ths_props_path = path_of_fb['thrift_properties']
+        source_cmd = 'source {}'.format(ths_props_path)
+        hive_opts = _get_hive_opts_str()
+        base_cmd = '$SPARK_SBIN/start-thriftserver.sh {}'.format(hive_opts)
+        cmd = '{}; {}'.format(source_cmd, base_cmd)
+        logger.debug(cmd)
+        os.system(cmd)
+        spark_log = os.path.join(os.environ['SPARK_HOME'], 'logs')
+        if _find_files_with_regex(spark_log, ROLLING_LOGFILE_REGEX):
+            for file in _find_files_with_regex(spark_log, NOHUP_LOGFILE_REGEX):
+                os.remove(os.path.join(spark_log, file))
 
     def stop(self):
         """Stop thriftserver
         """
-        logger.debug('stop thriftserver.')
-        max_try_count = 10
-        for i in range(0, max_try_count):
-            alive_count = self._get_alive_process_count()
-            logger.info('Alive thriftserver process: %s (try count: %s)' % (
-                alive_count, i))
-            if alive_count > 0:
-                self._send_stop_signal()
-                time.sleep(3)
-            else:
-                logger.info('thriftserver stop complete.')
-                return
-        raise Exception('thriftserver_stop_process', 'max try error')
+        logger.debug('thriftserver_command_stop')
+        _check_spark()
+        cluster_id = config.get_cur_cluster_id()
+        path_of_fb = config.get_path_of_fb(cluster_id)
+        ths_props_path = path_of_fb['thrift_properties']
+        source_cmd = 'source {}'.format(ths_props_path)
+        base_cmd = '$SPARK_SBIN/stop-thriftserver.sh'
+        cmd = '{}; {}'.format(source_cmd, base_cmd)
+        logger.debug(cmd)
+        os.system(cmd)
 
-    def monitor(self):
+    def monitor(self, n=10):
         """Monitor thriftserver (using tail -f)
         """
-        cur_cluster_id = config.get_cur_cluster_id()
-        logger.info('Start monitor cluster_id: %s' % cur_cluster_id)
-        ip_list = config.get_node_ip_list()
-        i = 1
-        msg = ''
-        for ip in ip_list:
-            msg += '%d) %s\n' % (i, ip)
-            i += 1
-        target_num = int(askInt(text=msg, default='1'))
-        logger.info('Ok. %s' % target_num)
-        target_index = target_num - 1
-        ip = ip_list[target_index]
-        client = get_ssh(ip)
-        envs = config.get_env_dict(ip, 0)
-        tl = envs['sr2_redis_log']  # TODO: change redis log path
-        command = 'tail -f {tl}/*'.format(tl=tl)
-        ssh_execute_async(client=client, command=command)
+        logger.debug('thriftserver_command_monitor')
+        _check_spark()
+        cluster_id = config.get_cur_cluster_id()
+        path_of_fb = config.get_path_of_fb(cluster_id)
+        ths_props_path = path_of_fb['thrift_properties']
+        source_cmd = 'source {}'.format(ths_props_path)
+        spark_log = _get_env()['spark_log']
+        # log_file_path = ''.join([
+        #     spark_log,
+        #     '/spark-{}-org.apache'.format(os.environ['USER']),
+        #     '.spark.sql.hive.thriftserver.HiveThriftServer2-1-*.out',
+        # ])
+        log_file_path = os.path.join(spark_log, NOHUP_LOGFILE)
+        if _find_files_with_regex(spark_log, ROLLING_LOGFILE_REGEX):
+            log_file_path = os.path.join(spark_log, ROLLING_LOGFILE)
+        base_cmd = 'tail -F -n {} {}'.format(n, log_file_path)
+        cmd = '{}; {}'.format(source_cmd, base_cmd)
+        logger.debug(cmd)
+        logger.info('Press Ctrl-C for exit.')
+        os.system(cmd)
 
-    def _send_stop_signal(self, force=False):
-        ip, port, _ = self._get_thriftserver_info()
-        pid_list = "ps -ef | grep 'thriftserver' | awk '{{print $2}}'"
-        signal = 'SIGKILL' if force else 'SIGINT'
-        command = 'kill -s {signal} $({pid_list})' \
-            .format(pid_list=pid_list, signal=signal)
-        client = get_ssh(ip)
-        ssh_execute(
-            client=client,
-            command=command,
-            allow_status=[-1, 0, 1, 123, 130])
-
-    def _get_thriftserver_info(self):
-        key = 'thriftserver'
-        meta = utils.get_meta_data_after_ensure(key)
-        cur_cluster_id = config.get_cur_cluster_id()
-        if str(cur_cluster_id) in meta:
-            full_path = utils.get_full_path_of_props(
-                cluster_id=cur_cluster_id,
-                target='thriftserver')
-            my_envs = _get_sh_envs(full_path)
-            ip = my_envs['HIVE_HOST']
-            port = int(my_envs['HIVE_PORT'])
-            ret = ip, port, cur_cluster_id
-            logger.info('thriftserver_info: ', ret)
-            return ret
-        assert False, 'You should edit thriftserver.properties before use it'
-        return 'localhost', 13000, 0
-
-    def _get_alive_process_count(self):
-        ps = "ps -ef | grep 'thriftserver'"
-        command = '''{ps} | wc -l'''.format(ps=ps)
-        total_count = 0
-        ip, port, _ = self._get_thriftserver_info()
-        client = get_ssh(ip)
-        exit_status, stdout_msg, stderr_msg = ssh_execute(
-            client=client,
-            command=command)
-        c = int(stdout_msg)
-        total_count += c
-        return total_count
+    def restart(self):
+        """Thriftserver restart
+        """
+        self.stop()
+        time.sleep(2)
+        self.start()

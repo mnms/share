@@ -1,6 +1,6 @@
 from os import environ
 
-from config import get_cur_cluster_id
+from fbctl import config
 
 
 def get_cli_prompt():
@@ -9,7 +9,7 @@ def get_cli_prompt():
     :param user: user name
     :return: prompt string
     """
-    cluster_id = get_cur_cluster_id(allow_empty_id=True)
+    cluster_id = config.get_cur_cluster_id(allow_empty_id=True)
     if cluster_id < 0:
         cluster_id = '-'
     user = environ['USER']
@@ -24,7 +24,7 @@ def get_sql_prompt():
     :param user: user name
     :return: prompt string
     """
-    cluster_id = get_cur_cluster_id(allow_empty_id=True)
+    cluster_id = config.get_cur_cluster_id(allow_empty_id=True)
     if cluster_id < 0:
         cluster_id = '-'
     user = environ['USER']

@@ -1,12 +1,17 @@
-from utils import print_table
+from fbctl import utils
+from fbctl.rediscli import (
+    RedisCliCluster,
+    RedisCliConfig,
+    RedisCliInfo,
+    RedisCliUtil
+)
 
-from .rediscli import (
-    RedisCliCluster, RedisCliConfig, RedisCliInfo, RedisCliUtil)
 
-
+# pylint: disable=redefined-builtin
+# need to parameter all for cli options
 def _command(sub_cmd, all, host, port):
     if all:
-        RedisCliUtil.command_all(sub_cmd=sub_cmd, formatter=print_table)
+        RedisCliUtil.command_all(sub_cmd=sub_cmd, formatter=utils.print_table)
     else:
         RedisCliUtil.command(sub_cmd=sub_cmd, host=host, port=port)
 

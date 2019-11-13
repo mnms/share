@@ -4,19 +4,15 @@ import errno
 import socket
 import time
 from threading import Thread
-from os.path import join as path_join
 import os
 import sys
 import shutil
 
 import paramiko
 import requests
-from redistrib2 import command as trib
-from redistrib2.exceptions import RedisIOError
 
-import utils
-from log import logger
-from exceptions import (
+from fbctl.log import logger
+from fbctl.exceptions import (
     SSHConnectionError,
     HostConnectionError,
     HostNameError,
@@ -67,7 +63,7 @@ def __ssh_execute_async_thread(channel, command):
             break
         try:
             msg = channel.recv(4096)
-            print(msg, end='')
+            print(msg.decode('utf-8'))
         except socket.error as e:
             err = e.args[0]
             if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
@@ -119,19 +115,20 @@ def ssh_execute(client, command, allow_status=[0]):
     stderr_msg = ''
 
     stdout_msg = stdout.read()
-    if stdout_msg is not "":
+    stdout_msg = stdout_msg.decode('utf-8')
+    if stdout_msg and stdout_msg is not "":
         logger.debug('---------------- command to : %s' % client.hostname)
         logger.debug(command)
         logger.debug('---------------- stdout')
         logger.debug(stdout_msg)
 
     stderr_msg = stderr.read()
-    if stderr_msg is not "":
+    stderr_msg = stderr_msg.decode('utf-8')
+    if stderr_msg and stderr_msg is not "":
         logger.debug('---------------- command to : %s' % client.hostname)
         logger.debug(command)
-        if len(stderr_msg) > 0:
-            logger.debug('---------------- stderr')
-            logger.debug(stderr_msg)
+        logger.debug('---------------- stderr')
+        logger.debug(stderr_msg)
 
     exit_status = stdout.channel.recv_exit_status()
     if exit_status not in allow_status:
@@ -180,8 +177,8 @@ def copy_dir_to_remote(client, local_path, remote_path):
     sftp = get_sftp(client)
     listdir = os.listdir(local_path)
     for f in listdir:
-        r_path = path_join(remote_path, f)
-        l_path = path_join(local_path, f)
+        r_path = os.path.join(remote_path, f)
+        l_path = os.path.join(local_path, f)
         if os.path.isdir(l_path):
             if not is_exist(client, r_path):
                 sftp.mkdir(r_path)
@@ -201,12 +198,15 @@ def copy_dir_from_remote(client, remote_path, local_path):
     :param remote_path: absolute path of file
     :param local_path: absolute path of file
     """
-    logger.debug('copy FROM node:{} TO localhost:{}'.format(remote_path, local_path))
+    logger.debug('copy FROM node:{} TO localhost:{}'.format(
+        remote_path,
+        local_path
+    ))
     sftp = get_sftp(client)
     listdir = sftp.listdir(remote_path)
     for f in listdir:
-        r_path = path_join(remote_path, f)
-        l_path = path_join(local_path, f)
+        r_path = os.path.join(remote_path, f)
+        l_path = os.path.join(local_path, f)
         if is_dir(client, r_path):
             if not os.path.exists(l_path):
                 os.mkdir(l_path)

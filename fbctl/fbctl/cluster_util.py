@@ -1,11 +1,8 @@
 import os
 
-from log import logger
-import config
-from deploy_util import DeployUtil
-import net
-import color
-import utils
+from fbctl.log import logger
+from fbctl import config
+from fbctl import utils
 
 
 def validate_id(cluster_id):
@@ -20,7 +17,8 @@ def get_cluster_list():
     base_directory = config.get_base_directory()
     buf = os.listdir(base_directory)
     buf = filter(lambda x: x.startswith('cluster_'), buf)
-    buf = map(lambda x: int(x[8:]), buf)
+    buf = filter(lambda x: utils.is_number(str(x[8:])), buf)
+    buf = list(map(lambda x: int(x[8:]), buf))
     cluster_list = []
     for cluster_id in buf:
         cluster_dir = 'cluster_{}'.format(cluster_id)

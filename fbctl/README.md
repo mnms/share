@@ -14,6 +14,10 @@
 
 [Re-Deploy](#re-deploy)
 
+[Add Slave](#add-slave)
+
+[Thrift Server](#thrift-server)
+
 [Logging in file](#logging-in-file)
 
 </br>
@@ -23,7 +27,7 @@
 
 * Installing prerequisites for flashbase
 
-* Python 2.7
+* Python ==2.7, >=3.5
 
 </br>
 </br>
@@ -126,18 +130,23 @@ you can also add file in list by copy to '$FBPATH/releases/'
 OK, tsr2-installer.bin.flashbase_v1.1.10.centos
 ```
 
-installer를 선택합니다. 목록에 추가하고 싶은 경우  `$FBPATH/releases` 경로 아래에 installer를 복사하세요.
+installer를 선택합니다. 숫자입력을 통해 리스트에서 선택할 수 있으며, 파일의 경로나 url을 통해서도 선택할 수 있습니다.
 
-숫자입력을 통해 리스트에서 선택할 수 있으며, 파일의 경로나 url을 통해서도 가능합니다.
-
-ex)  `~/tsr2-installer.bin.flashbase_v1.1.10.centos`
-
-url 입력 시 아래와 같이 installer 파일 다운로드가 진행되며 파일은 `$FBPATH/releases` 아래에 저장됩니다.
 
 ```
-Downloading tsr2-installer.bin.flashbase_v1.1.10.centos
-[=======                                           ] 15%
+Select installer
+
+    [ INSTALLER LIST ]
+    (empty)
+
+Please enter file path or url of the installer you want to use
+you can also add file in list by copy to '$FBPATH/releases/'
 ```
+
+위와 같이 목록이 비어있는 경우에는 파일 경로를 입력하거나 url 입력을 통해서만 installer를 선택할 수 있습니다.
+
+url을 통해 installer를 다운로드 하거나 `$FBPATH/releases/` 경로 아래에 installer 파일을 복사하면 리스트에 추가됩니다.
+
 
 </br>
 
@@ -207,15 +216,12 @@ port는 cluster id와 slave의 개수를 기반으로 추천해줍니다.
 ### 그 외 정보 입력
 
 ```
-How many sdd would you like to use? [3]
+How many ssd would you like to use? [3]
 3
 OK, 3
-Type prefix of redis_data [~/ssd_]
-~/sata_ssd/ssd_
-Type prefix of redis_db_path [~/ssd_]
-~/sata_ssd/ssd_
-Type prefix of flash_db_path [~/ssd_]
-~/sata_ssd/ssd_
+Type prefix of db path [/sata_ssd/ssd_]
+/sata_ssd/ssd_
+OK, /sata_ssd/ssd_
 ```
 
 
@@ -224,21 +230,19 @@ Type prefix of flash_db_path [~/ssd_]
 ### 정보확인
 
 ```
-+-----------------+---------------------------------------------+
-| NAME            | VALUE                                       |
-+-----------------+---------------------------------------------+
-| installer       | tsr2-installer.bin.flashbase_v1.1.10.centos |
-| nodes           | nodeA                                       |
-|                 | nodeB                                       |
-|                 | nodeC                                       |
-|                 | nodeD                                       |
-| master ports    | 18100                                       |
-| slave ports     | 18150-18151                                 |
-| ssd count       | 3                                           |
-| redis data path | ~/sata_ssd/ssd_                             |
-| redis db path   | ~/sata_ssd/ssd_                             |
-| flash db path   | ~/sata_ssd/ssd_                             |
-+-----------------+---------------------------------------------+
++-------------------+---------------------------------------------+
+| NAME              | VALUE                                       |
++-------------------+---------------------------------------------+
+| installer         | tsr2-installer.bin.flashbase_v1.1.10.centos |
+| nodes             | nodeA                                       |
+|                   | nodeB                                       |
+|                   | nodeC                                       |
+|                   | nodeD                                       |
+| master ports      | 18100                                       |
+| slave ports       | 18150-18151                                 |
+| ssd count         | 3                                           |
+| prefix_of_db_path | ~/sata_ssd/ssd_                             |
++-------------------+---------------------------------------------+
 Do you want to proceed with the deploy accroding to the above information? (y/n)
 y
 ```
@@ -581,9 +585,9 @@ y
 | master ports    | 18100                                       |
 | slave ports     | 18150-18151                                 |
 | ssd count       | 3                                           |
-| redis data path | ~/sata_ssd/ssd_                             |
-| redis db path   | ~/sata_ssd/ssd_                             |
-| flash db path   | ~/sata_ssd/ssd_                             |
+| redis data path | /sata_ssd/ssd_                              |
+| redis db path   | /sata_ssd/ssd_                              |
+| flash db path   | /sata_ssd/ssd_                              |
 +-----------------+---------------------------------------------+
 Do you want to proceed with the deploy accroding to the above information? (y/n)
 y
@@ -773,9 +777,9 @@ y
 | master ports    | 18100                                       |
 | slave ports     | 18150-18151                                 |
 | ssd count       | 3                                           |
-| redis data path | ~/sata_ssd/ssd_                             |
-| redis db path   | ~/sata_ssd/ssd_                             |
-| flash db path   | ~/sata_ssd/ssd_                             |
+| redis data path | /sata_ssd/ssd_                              |
+| redis db path   | /sata_ssd/ssd_                              |
+| flash db path   | /sata_ssd/ssd_                              |
 +-----------------+---------------------------------------------+
 Do you want to proceed with the deploy accroding to the above information? (y/n)
 y
@@ -808,6 +812,308 @@ Cluster 1 selected.
 conf 백업 경로: `$FBAPTH/conf_backup/cluster_<cluster-id>_conf_bak_<time-stamp>`
 
 
+
+</br>
+</br>
+
+## Add Slave
+
+You can add a slave to a cluster that is configured only with master without redundancy.
+
+### create cluster only with master
+
+(Procedure for configuring the test environment. If cluster with only master already exists, go to the [add slave info](#add-slave-info).)
+
+Proceed with the deploy.
+
+```
+> deploy 3
+```
+
+Enter 0 in replicas as shown below when deploy.
+
+```
+Select installer
+
+    [ INSTALLER LIST ]
+    (1) tsr2-installer.bin.flashbase_v1.1.10.centos
+
+Please enter the number, file path or url of the installer you want to use.
+you can also add file in list by copy to '$FBPATH/releases/'
+1
+OK, tsr2-installer.bin.flashbase_v1.1.10.centos
+Please type host list separated by comma(,) [127.0.0.1]
+127.0.0.1
+OK, ['127.0.0.1']
+How many masters would you like to create on each host? [1]
+1
+OK, 1
+Please type ports separate with comma(,) and use hyphen(-) for range. [18300]
+18300
+OK, ['18300']
+
+*-----------------------------------------------------------------*
+| How many replicas would you like to create on each master? [2]  |
+| 0                                                               |
+| OK, 0                                                           |
+*-----------------------------------------------------------------*
+ ↳ (a border just for emphasis)
+
+How many ssd would you like to use? [3]
+3
+OK, 3
+Type prefix of db path [/sata_ssd/ssd_]
+/sata_ssd/ssd_
+OK, /sata_ssd/ssd_
++-------------------+---------------------------------------------+
+| NAME              | VALUE                                       |
++-------------------+---------------------------------------------+
+| installer         | tsr2-installer.bin.flashbase_v1.1.10.centos |
+| hosts             | 127.0.0.1                                   |
+| master ports      | 18300                                       |
+| ssd count         | 3                                           |
+| prefix_of_db_path | /sata_ssd/ssd_                              |
++-------------------+---------------------------------------------+
+Do you want to proceed with the deploy accroding to the above information? (y/n)
+y
+```
+
+When the deploy is complete, start and create the cluster.
+
+```
+> cluster start
+...
+> cluster create
+...
+```
+
+<br/>
+
+
+### add slave info
+
+```
+> conf cluster
+```
+
+You can modify `redis.properties` by entering the command as shown above.
+
+```sh
+  1 #!/bin/bash
+  2
+  3 ## Master hosts and ports
+  4 export SR2_REDIS_MASTER_HOSTS=( "127.0.0.1" )
+  5 export SR2_REDIS_MASTER_PORTS=( 18300 )
+  6
+  7 ## Slave hosts and ports (optional)
+  8 #export SR2_REDIS_SLAVE_HOSTS=( "127.0.0.1" )
+  9 #export SR2_REDIS_SLAVE_PORTS=( $(seq 18600 18609) )
+ 10
+ 11 ## only single data directory in redis db and flash db
+ 12 ## Must exist below variables; 'SR2_REDIS_DATA', 'SR2_REDIS_DB_PATH' and 'SR2_FLASH_DB_PATH'
+ 13 #export SR2_REDIS_DATA="/nvdrive0/nvkvs/redis"
+ 14 #export SR2_REDIS_DB_PATH="/nvdrive0/nvkvs/redis"
+ 15 #export SR2_FLASH_DB_PATH="/nvdrive0/nvkvs/flash"
+ 16
+ 17 ## multiple data directory in redis db and flash db
+ 18 export SSD_COUNT=3
+ 19 #export HDD_COUNT=3
+ 20 export SR2_REDIS_DATA="/sata_ssd/ssd_"
+ 21 export SR2_REDIS_DB_PATH="/sata_ssd/ssd_"
+ 22 export SR2_FLASH_DB_PATH="/sata_ssd/ssd_"
+ 23
+ 24 #######################################################
+ 25 # Example : only SSD data directory.
+ 26 #export SSD_COUNT=3
+ 27 #export SR2_REDIS_DATA="/ssd_"
+ 28 #export SR2_REDIS_DB_PATH="/ssd_"
+ 29 #export SR2_FLASH_DB_PATH="/ssd_"
+ 30 #######################################################
+```
+
+Modify `SR2_REDIS_SLAVE_HOSTS` and `SR2_REDIS_SLAVE_PORTS` as shown below.
+
+
+```sh
+  1 #!/bin/bash
+  2
+  3 ## Master hosts and ports
+  4 export SR2_REDIS_MASTER_HOSTS=( "127.0.0.1" )
+  5 export SR2_REDIS_MASTER_PORTS=( 18300 )
+  6
+  7 ## Slave hosts and ports (optional)
+  8 export SR2_REDIS_SLAVE_HOSTS=( "127.0.0.1" )
+  9 export SR2_REDIS_SLAVE_PORTS=( $(seq 18350 18351) )
+ 10
+ 11 ## only single data directory in redis db and flash db
+ 12 ## Must exist below variables; 'SR2_REDIS_DATA', 'SR2_REDIS_DB_PATH' and 'SR2_FLASH_DB_PATH'
+ 13 #export SR2_REDIS_DATA="/nvdrive0/nvkvs/redis"
+ 14 #export SR2_REDIS_DB_PATH="/nvdrive0/nvkvs/redis"
+ 15 #export SR2_FLASH_DB_PATH="/nvdrive0/nvkvs/flash"
+ 16
+ 17 ## multiple data directory in redis db and flash db
+ 18 export SSD_COUNT=3
+ 19 #export HDD_COUNT=3
+ 20 export SR2_REDIS_DATA="/sata_ssd/ssd_"
+ 21 export SR2_REDIS_DB_PATH="/sata_ssd/ssd_"
+ 22 export SR2_FLASH_DB_PATH="/sata_ssd/ssd_"
+ 23
+ 24 #######################################################
+ 25 # Example : only SSD data directory.
+ 26 #export SSD_COUNT=3
+ 27 #export SR2_REDIS_DATA="/ssd_"
+ 28 #export SR2_REDIS_DB_PATH="/ssd_"
+ 29 #export SR2_FLASH_DB_PATH="/ssd_"
+ 30 #######################################################
+ ```
+
+<br/>
+
+### execute command add-slave
+
+```
+> cluster add-slave
+Check status of hosts...
+OK
+sync conf
+Complete edit
+root@flashbase:3> cluster add-slave
+Check status of hosts...
+OK
+Check cluster exist...
+ - 127.0.0.1
+OK
+Removing redis generated slave configuration files
+ - 127.0.0.1
+Removing flash db directory, appendonly and dump.rdb files in master
+Removing flash db directory, appendonly and dump.rdb files in slave
+ - 127.0.0.1
+Removing master node configuration
+Removing slave node configuration
+ - 127.0.0.1
+Backup redis slave log in each SLAVE hosts...
+ - 127.0.0.1
+Generate redis configuration files for slave hosts
+sync conf
++-----------+--------+
+| HOST      | STATUS |
++-----------+--------+
+| 127.0.0.1 | OK     |
++-----------+--------+
+Starting slave nodes : 127.0.0.1 : 18350|18351 ...
+Wait until all redis process up...
+cur: 3 / total: 3
+Complete all redis process up
+replicate [M] 127.0.0.1 18300 - [S] 127.0.0.1 18350
+replicate [M] 127.0.0.1 18300 - [S] 127.0.0.1 18351
+1 / 2 meet complete.
+2 / 2 meet complete.
+```
+
+<br/>
+
+### check configuration information
+
+```
+> cli cluster nodes
+fc7d8c... 127.0.0.1:18300 myself,master - 0 1573628546000 0 connected 0-16383
+f9dbb3... 127.0.0.1:18351 slave fc7d8c... 0 1573628547266 1 connected
+60c723... 127.0.0.1:18350 slave fc7d8c... 0 1573628548269 1 connected
+```
+
+<br/>
+<br/>
+
+## Thrift Server
+
+
+* start
+* monitor
+* beeline
+* stop
+* restart
+
+
+`ths` is alias of `thriftserver`
+
+You can modify information of thrift server by command `conf thriftserver (= conf ths)`
+thrift server 관련 정보수정은 `conf thriftserver (= conf ths)` 를 이용하세요.
+
+<br/>
+
+### start
+
+Run the thrift server.
+
+```
+> ths start  # alias of thriftserver start
+starting org.apache.spark.sql.hive.thriftserver.HiveThriftServer2, logging to <logfile-name>
+```
+
+You can view the logs through the command [monitor](#monitor).
+
+<br/>
+
+### monitor
+
+You can view the logs of the thrift server in real time.
+
+```
+> ths monitor  # alias of thriftserver monitor
+Press Ctrl-C for exit.
+(show log)
+```
+
+<br/>
+
+### beeline
+
+Connect to the thrift server
+
+For more information, see the [link](https://cwiki.apache.org/confluence/display/Hive/HiveServer2+Clients#HiveServer2Clients-Beeline%E2%80%93CommandLineShell).
+
+```
+> ths beeline  # alias of thriftserver beeline
+Connecting...
+Connecting to jdbc:hive2://localhost:13000
+<timestamp> INFO jdbc.Utils: Supplied authorities: localhost:13000
+<timestamp> INFO jdbc.Utils: Resolved authority: localhost:13000
+<timestamp> INFO jdbc.HiveConnection: Will try to open client transport with JDBC Uri: jdbc:hive2://localhost:13000
+Connected to: Spark SQL (version 2.1.1)
+Driver: Hive JDBC (version 1.2.1.spark2)
+Transaction isolation: TRANSACTION_REPEATABLE_READ
+Beeline version 1.2.1.spark2 by Apache Hive
+0: jdbc:hive2://localhost:13000>
+```
+
+Default value of db url to connect is `jdbc:hive2://$HIVE_HOST:$HIVE_PORT`
+
+You can modify `$HIVE_HOST` and `$HIVE_PORT` by command `conf ths`
+
+<br/>
+
+### stop
+
+Shut down the thrift server.
+
+```
+> ths stop  # alias of thriftserver stop
+stopping org.apache.spark.sql.hive.thriftserver.HiveThriftServer2
+```
+
+<br/>
+
+### restart
+
+Restart the thrift server.
+
+```
+> ths restart  # alias of thriftserver restart
+stopping org.apache.spark.sql.hive.thriftserver.HiveThriftServer2
+starting org.apache.spark.sql.hive.thriftserver.HiveThriftServer2, logging to <logfile-name>
+```
+
+
 </br>
 </br>
 
@@ -816,3 +1122,5 @@ conf 백업 경로: `$FBAPTH/conf_backup/cluster_<cluster-id>_conf_bak_<time-sta
 `$FBPATH/logs/fb-roate.log` 에 debug 수준의 로그가 저장됩니다.
 
 최대 1GiB 만큼 저장하며 초과하는 경우 최신순으로 rolling update가 진행됩니다.
+
+fbctl의 로그만 저장됩니다. 클러스터, thriftserver 등의 로그는 별도의 명령어를 사용하세요.

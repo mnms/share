@@ -1,28 +1,22 @@
-import datetime
 import time
-from os.path import join as path_join
 import os
 from threading import Thread
 import socket
-from time import gmtime, strftime
 import subprocess
 import shutil
 
-from config import get_env_dict
-import config
-from log import logger
-from net import get_ssh, ssh_execute, get_home_path, get_sftp
-import net
-from rediscli_util import RedisCliUtil
-from redistrib2 import command as trib
-from utils import get_ip_port_tuple_list, make_export_envs
-import utils
-from deploy_util import DeployUtil, DEPLOYED
 from terminaltables import AsciiTable
-import ask_util
-import color
-from hiredis import ProtocolError
-from exceptions import (
+
+from fbctl import config
+from fbctl.log import logger
+from fbctl import net
+from fbctl.rediscli_util import RedisCliUtil
+from fbctl.redistrib2 import command as trib
+from fbctl import utils
+from fbctl.deploy_util import DeployUtil, DEPLOYED
+from fbctl import ask_util
+from fbctl import color
+from fbctl.exceptions import (
     SSHConnectionError,
     HostConnectionError,
     HostNameError,
@@ -30,7 +24,6 @@ from exceptions import (
     ClusterRedisError,
     ClusterNotExistError,
 )
-import color
 
 
 def get_ps_list_command(port_list):
@@ -61,7 +54,7 @@ class Center(object):
         meta = [['HOST', 'STATUS']]
         no_cluster_flag = False
         for host in self.all_host_list:
-            client = get_ssh(host)
+            client = net.get_ssh(host)
             cluster_path = path_of_fb['cluster_path']
             if not net.is_dir(client, cluster_path):
                 no_cluster_flag = True
@@ -79,7 +72,7 @@ class Center(object):
             if net.get_ip(host) in my_address:
                 meta.append([host, color.green('OK')])
                 continue
-            client = get_ssh(host)
+            client = net.get_ssh(host)
             try:
                 net.copy_dir_to_remote(client, conf_path, conf_path)
                 meta.append([host, color.green('OK')])
@@ -96,7 +89,7 @@ class Center(object):
             return False
         return True
 
-    def configure_redis(self):
+    def configure_redis(self, master=True, slave=True):
         logger.debug('configure redis')
         path_of_fb = config.get_path_of_fb(self.cluster_id)
         sr2_redis_conf_temp = path_of_fb['sr2_redis_conf_temp']
@@ -106,14 +99,16 @@ class Center(object):
         sr2_redis_conf = path_of_fb['sr2_redis_conf']
         if not os.path.exists(sr2_redis_conf):
             os.mkdir(sr2_redis_conf)
-        for port in self.master_port_list:
-            self.create_conf_from_template('redis-master.conf.template', port)
-        if self.master_port_list:
-            logger.info('Generate redis configuration files for master hosts')
-        for port in self.slave_port_list:
-            self.create_conf_from_template('redis-slave.conf.template', port)
-        if self.slave_port_list:
-            logger.info('Generate redis configuration files for slave hosts')
+        if master:
+            for port in self.master_port_list:
+                self.create_conf_from_template('redis-master.conf.template', port)
+            if self.master_port_list:
+                logger.info('Generate redis configuration files for master hosts')
+        if slave:
+            for port in self.slave_port_list:
+                self.create_conf_from_template('redis-slave.conf.template', port)
+            if self.slave_port_list:
+                logger.info('Generate redis configuration files for slave hosts')
         command = 'cp -r {}/* {}'.format(sr2_redis_conf_temp, sr2_redis_conf)
         subprocess.check_output(command, shell=True)
         logger.debug('subprocess: {}'.format(command))
@@ -124,17 +119,17 @@ class Center(object):
             file_name,
             template_name
         ))
-        pos = config.get_ssd_disk_position(port)
+        disk_pos = config.get_ssd_disk_position(port)
         export_envs = ' '.join([
-            'export SR2_REDIS_DATA={}'.format(pos['sr2_redis_data']),
+            'export SR2_REDIS_DATA={}'.format(disk_pos['sr2_redis_data']),
             'export SR2_REDIS_PORT={}'.format(port),
-            'export SR2_FLASH_DB_PATH={}'.format(pos['sr2_flash_db_path']),
+            'export SR2_FLASH_DB_PATH={}'.format(disk_pos['sr2_flash_db_path']),
         ])
         path_of_fb = config.get_path_of_fb(self.cluster_id)
         conf_path = path_of_fb['conf_path']
         sr2_redis_conf_temp = path_of_fb['sr2_redis_conf_temp']
-        template_path = path_join(conf_path, template_name)
-        target = path_join(sr2_redis_conf_temp, file_name)
+        template_path = os.path.join(conf_path, template_name)
+        target = os.path.join(sr2_redis_conf_temp, file_name)
         command = '{}; cat {} | envsubst > {}'.format(
             export_envs,
             template_path,
@@ -143,44 +138,47 @@ class Center(object):
         subprocess.check_output(command, shell=True)
         logger.debug('subprocess: {}'.format(command))
 
-    def backup_server_logs(self):
-        """
-        Backup server logs
+    def backup_server_logs(self, master=True, slave=True):
+        """ Backup server logs
+
         Move redis log files to $SR2_REDIS_LOG/backup/<time-stamp>
         """
         logger.debug('backup_server_logs')
-        logger.info('Backup redis master log in each MASTER hosts...')
-        current_time = strftime("%Y%m%d-%H%M%S", gmtime())
+        current_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         path_of_fb = config.get_path_of_fb(self.cluster_id)
         sr2_redis_log = path_of_fb['sr2_redis_log']
-        backup_path = path_join(sr2_redis_log, 'backup', current_time)
-        for host in self.master_host_list:
-            logger.info(' - {}'.format(host))
-            client = get_ssh(host)
-            command = 'mkdir -p {}'.format(backup_path)
-            ssh_execute(client, command)
-            for port in self.master_port_list:
-                command = 'mv {0}/*{1}*.log {2} &> /dev/null'.format(
-                    sr2_redis_log,
-                    port,
-                    backup_path
-                )
-                ssh_execute(client, command, allow_status=[0, 1])
-            client.close()
-        if self.slave_host_list:
+        backup_path = os.path.join(sr2_redis_log, 'backup', current_time)
+        logger.debug('backup path: {}'.format(backup_path))
+        if master:
+            logger.info('Backup redis master log in each MASTER hosts...')
+            self._backup_server_logs(
+                self.master_host_list,
+                self.master_port_list,
+                backup_path
+            )
+        if slave and self.slave_host_list:
             logger.info('Backup redis slave log in each SLAVE hosts...')
-        for host in self.slave_host_list:
+            self._backup_server_logs(
+                self.slave_host_list,
+                self.slave_port_list,
+                backup_path
+            )
+
+    def _backup_server_logs(self, hosts, ports, backup_path):
+        path_of_fb = config.get_path_of_fb(self.cluster_id)
+        sr2_redis_log = path_of_fb['sr2_redis_log']
+        for host in hosts:
             logger.info(' - {}'.format(host))
-            client = get_ssh(host)
+            client = net.get_ssh(host)
             command = 'mkdir -p {}'.format(backup_path)
-            ssh_execute(client, command)
-            for port in self.slave_port_list:
+            net.ssh_execute(client, command)
+            for port in ports:
                 command = 'mv {0}/*{1}*.log {2} &> /dev/null'.format(
                     sr2_redis_log,
                     port,
                     backup_path
                 )
-                ssh_execute(client, command, allow_status=[0, 1])
+                net.ssh_execute(client, command, allow_status=[0, 1])
             client.close()
 
     def conf_backup(self, host, cluster_id, tag):
@@ -190,14 +188,14 @@ class Center(object):
         conf_path = path_of_fb['conf_path']
         path_of_cli = config.get_path_of_cli(cluster_id)
         conf_backup_path = path_of_cli['conf_backup_path']
-        conf_backup_tag_path = path_join(conf_backup_path, tag)
+        conf_backup_tag_path = os.path.join(conf_backup_path, tag)
 
         if not os.path.isdir(conf_backup_path):
             os.mkdir(conf_backup_path)
 
         # back up conf
         os.mkdir(conf_backup_tag_path)
-        client = get_ssh(host)
+        client = net.get_ssh(host)
         net.copy_dir_from_remote(client, conf_path, conf_backup_tag_path)
         client.close()
 
@@ -209,16 +207,16 @@ class Center(object):
         path_of_fb = config.get_path_of_fb(cluster_id)
         cluster_path = path_of_fb['cluster_path']
         cluster_backup_path = path_of_fb['cluster_backup_path']
-        cluster_backup_tag_path = path_join(cluster_backup_path, tag)
+        cluster_backup_tag_path = os.path.join(cluster_backup_path, tag)
 
         # back up cluster
-        client = get_ssh(host)
+        client = net.get_ssh(host)
         if not net.is_dir(client, cluster_backup_path):
-            sftp = get_sftp(client)
+            sftp = net.get_sftp(client)
             sftp.mkdir(cluster_backup_path)
             sftp.close()
         command = 'mv {} {}'.format(cluster_path, cluster_backup_tag_path)
-        ssh_execute(client=client, command=command)
+        net.ssh_execute(client=client, command=command)
         client.close()
         logger.info('OK, {}'.format(tag))
 
@@ -229,33 +227,35 @@ class Center(object):
         path_of_cli = config.get_path_of_cli(cluster_id)
         conf_path = path_of_fb['conf_path']
         conf_backup_path = path_of_cli['conf_backup_path']
-        conf_backup_tag_path = path_join(conf_backup_path, tag)
+        conf_backup_tag_path = os.path.join(conf_backup_path, tag)
 
         # restore conf
-        client = get_ssh(host)
+        client = net.get_ssh(host)
         net.copy_dir_to_remote(client, conf_backup_tag_path, conf_path)
         client.close()
         logger.debug('OK')
 
-    def start_redis_process(self, profile=False):
+    def start_redis_process(self, profile=False, master=True, slave=True):
         """ Start redis process
         """
         logger.debug('start_redis_process.')
-        current_time = strftime("%Y%m%d-%H%M", gmtime())
-        m_port = self.master_port_list
-        s_port = self.slave_port_list
-        for host in self.master_host_list:
-            logger.info('Starting master nodes : {} : {} ...'.format(
-                host,
-                '|'.join(map(str, m_port))
-            ))
-            self.run_redis_process(host, m_port, profile, current_time)
-        for host in self.slave_host_list:
-            logger.info('Starting slave nodes : {} : {} ...'.format(
-                host,
-                '|'.join(map(str, s_port))
-            ))
-            self.run_redis_process(host, s_port, profile, current_time)
+        current_time = time.strftime("%Y%m%d-%H%M", time.gmtime())
+        if master:
+            m_port = self.master_port_list
+            for host in self.master_host_list:
+                logger.info('Starting master nodes : {} : {} ...'.format(
+                    host,
+                    '|'.join(list(map(str, m_port)))
+                ))
+                self.run_redis_process(host, m_port, profile, current_time)
+        if slave:
+            s_port = self.slave_port_list
+            for host in self.slave_host_list:
+                logger.info('Starting slave nodes : {} : {} ...'.format(
+                    host,
+                    '|'.join(list(map(str, s_port)))
+                ))
+                self.run_redis_process(host, s_port, profile, current_time)
 
     def get_alive_redis_count(self, hosts, ports):
         logger.debug('get_alive_redis_count')
@@ -264,15 +264,15 @@ class Center(object):
         command = '{} | wc -l'.format(ps_list_command)
         total = 0
         for host in hosts:
-            client = get_ssh(host)
-            _, stdout_msg, _ = ssh_execute(client=client, command=command)
+            client = net.get_ssh(host)
+            _, stdout_msg, _ = net.ssh_execute(client=client, command=command)
             total += int(stdout_msg.strip())
         logger.debug('redis-server total={}'.format(total))
         cmd = "ps -ef | grep 'redis-rdb-to-slaves' | grep -v 'grep' | wc -l"
         redis_rdb_count = 0
         for host in hosts:
-            client = get_ssh(host)
-            _, stdout_msg, _ = ssh_execute(client=client, command=cmd)
+            client = net.get_ssh(host)
+            _, stdout_msg, _ = net.ssh_execute(client=client, command=cmd)
             redis_rdb_count += int(stdout_msg.strip())
         logger.debug(command)
         logger.debug('redis-rbd-to-slaves total={}'.format(total))
@@ -311,14 +311,17 @@ class Center(object):
             logger.warn('Cancel create')
             return
         m_ip_list = list(map(net.get_ip, self.master_host_list))
-        targets = get_ip_port_tuple_list(m_ip_list, self.master_port_list)
+        targets = utils.get_ip_port_tuple_list(
+            m_ip_list,
+            self.master_port_list
+        )
         try:
             trib.create(targets, max_slots=16384)
         except Exception as ex:
             logger.error(str(ex))
             return
-        if len(self.slave_port_list) > 0:
-            self._replicate()
+        if self.slave_port_list:
+            self.replicate()
         logger.info('create cluster complete.')
 
     def confirm_node_port_info(self, skip=False):
@@ -350,8 +353,8 @@ class Center(object):
         ps_list_command = get_ps_list_command(ports)
         pid_list = "{} | awk '{{print $2}}'".format(ps_list_command)
         command = 'kill -s {} $({})'.format(signal, pid_list)
-        client = get_ssh(host)
-        ssh_execute(client, command, allow_status=[-1, 0, 1, 2, 123, 130])
+        client = net.get_ssh(host)
+        net.ssh_execute(client, command, allow_status=[-1, 0, 1, 2, 123, 130])
         client.close()
 
     def stop_redis(self, force=False):
@@ -381,30 +384,34 @@ class Center(object):
             time.sleep(1)
         raise ClusterRedisError('Fail to stop redis: max try exceed')
 
-    def create_redis_data_directory(self):
+    def create_redis_data_directory(self, master=True, slave=True):
         """ create directory SR2_REDIS_DATA, SR2_FLASH_DB_PATH
         """
         logger.debug('create_redis_data_directory')
-        logger.debug('create redis data directory in each MASTER hosts')
-        for host in self.master_host_list:
-            client = get_ssh(host)
-            for port in self.master_port_list:
-                disk_pos = config.get_ssd_disk_position(port)
-                redis_data = disk_pos['sr2_redis_data']
-                flash_db_path = disk_pos['sr2_flash_db_path']
-                command = 'mkdir -p %s %s' % (redis_data, flash_db_path)
-                ssh_execute(client, command)
-            client.close()
-        if self.slave_host_list:
+        if master:
+            logger.debug('create redis data directory in each MASTER hosts')
+            self._create_redis_data_directory(
+                self.master_host_list,
+                self.master_port_list,
+            )
+        if slave and self.slave_host_list:
             logger.debug('create redis data directory in each SLAVE hosts')
-        for host in self.slave_host_list:
-            client = get_ssh(host)
-            for port in self.slave_port_list:
+            self._create_redis_data_directory(
+                self.slave_host_list,
+                self.slave_port_list,
+            )
+
+    def _create_redis_data_directory(self, hosts, ports):
+        for host in hosts:
+            client = net.get_ssh(host)
+            for port in ports:
                 disk_pos = config.get_ssd_disk_position(port)
                 redis_data = disk_pos['sr2_redis_data']
+                command = 'mkdir -p %s' % (redis_data)
+                net.ssh_execute(client, command)
                 flash_db_path = disk_pos['sr2_flash_db_path']
-                command = 'mkdir -p %s %s' % (redis_data, flash_db_path)
-                ssh_execute(client, command)
+                command = 'mkdir -p %s' % (flash_db_path)
+                net.ssh_execute(client, command)
             client.close()
 
     def wait_until_all_redis_process_up(self):
@@ -442,7 +449,7 @@ class Center(object):
         success_count = 0
         for host in hosts:
             try:
-                client = get_ssh(host)
+                client = net.get_ssh(host)
                 client.close()
                 logger.debug('{} ssh... OK'.format(host))
                 success_count += 1
@@ -479,32 +486,33 @@ class Center(object):
         return False
 
     def _remove_node_conf(self, client, port):
-        pos = config.get_ssd_disk_position(port)
-        sr2_redis_data = pos['sr2_redis_data']
+        disk_pos = config.get_ssd_disk_position(port)
+        sr2_redis_data = disk_pos['sr2_redis_data']
         file_name = 'nodes-{}.conf'.format(port)
         command = "find {} -name '{}' -exec rm -f {{}} \\;".format(
             sr2_redis_data,
             file_name,
         )
-        ssh_execute(client, command, [0, 1])
+        net.ssh_execute(client, command, [0, 1])
 
-    def remove_nodes_conf(self):
+    def remove_nodes_conf(self, master=True, slave=True):
         logger.info('Removing master node configuration')
-        for host in self.master_host_list:
-            logger.info(' - {}'.format(host))
-            client = get_ssh(host)
-            for port in self.master_port_list:
-                self._remove_node_conf(client, port)
-            client.close()
+        if master:
+            for host in self.master_host_list:
+                logger.info(' - {}'.format(host))
+                client = net.get_ssh(host)
+                for port in self.master_port_list:
+                    self._remove_node_conf(client, port)
+                client.close()
 
-        if self.slave_host_list:
+        if slave and self.slave_host_list:
             logger.info('Removing slave node configuration')
-        for host in self.slave_host_list:
-            logger.info(' - {}'.format(host))
-            client = get_ssh(host)
-            for port in self.slave_port_list:
-                self._remove_node_conf(client, port)
-            client.close()
+            for host in self.slave_host_list:
+                logger.info(' - {}'.format(host))
+                client = net.get_ssh(host)
+                for port in self.slave_port_list:
+                    self._remove_node_conf(client, port)
+                client.close()
 
     def remove_all_of_redis_log_force(self):
         logger.info('remove all of redis log')
@@ -512,72 +520,74 @@ class Center(object):
         sr2_redis_log = path_of_fb['sr2_redis_log']
         command = 'rm -f {}/*.log'.format(sr2_redis_log)
         for host in self.master_host_list:
-            client = get_ssh(host)
-            ssh_execute(client, command)
+            client = net.get_ssh(host)
+            net.ssh_execute(client, command)
             client.close()
             logger.info(' - {}'.format(host))
 
-    def remove_generated_config(self):
+    def remove_generated_config(self, master=True, slave=True):
         path_of_fb = config.get_path_of_fb(self.cluster_id)
         sr2_redis_conf = path_of_fb['sr2_redis_conf']
-        logger.info('Removing redis generated master configuration files')
-        for host in self.master_host_list:
-            logger.info(' - {}'.format(host))
-            client = get_ssh(host)
-            for port in self.master_port_list:
-                conf_file = 'redis-{}.conf'.format(port)
-                conf_file_path = path_join(sr2_redis_conf, conf_file)
-                command = 'rm -rf {}'.format(conf_file_path)
-                ssh_execute(client, command)
-            client.close()
-        if self.slave_host_list:
+        if master:
+            logger.info('Removing redis generated master configuration files')
+            for host in self.master_host_list:
+                logger.info(' - {}'.format(host))
+                client = net.get_ssh(host)
+                for port in self.master_port_list:
+                    conf_file = 'redis-{}.conf'.format(port)
+                    conf_file_path = os.path.join(sr2_redis_conf, conf_file)
+                    command = 'rm -rf {}'.format(conf_file_path)
+                    net.ssh_execute(client, command)
+                client.close()
+        if slave and self.slave_host_list:
             logger.info('Removing redis generated slave configuration files')
-        for host in self.slave_host_list:
-            logger.info(' - {}'.format(host))
-            client = get_ssh(host)
-            for port in self.slave_port_list:
-                conf_file = 'redis-{}.conf'.format(port)
-                conf_file_path = path_join(sr2_redis_conf, conf_file)
-                command = 'rm -rf {}'.format(conf_file_path)
-                ssh_execute(client, command)
-            client.close()
+            for host in self.slave_host_list:
+                logger.info(' - {}'.format(host))
+                client = net.get_ssh(host)
+                for port in self.slave_port_list:
+                    conf_file = 'redis-{}.conf'.format(port)
+                    conf_file_path = os.path.join(sr2_redis_conf, conf_file)
+                    command = 'rm -rf {}'.format(conf_file_path)
+                    net.ssh_execute(client, command)
+                client.close()
 
     def _remove_data(self, client, port):
-        pos = config.get_ssd_disk_position(port)
-        sr2_redis_data = pos['sr2_redis_data']
-        sr2_flash_db_path = pos['sr2_flash_db_path']
+        disk_pos = config.get_ssd_disk_position(port)
+        sr2_redis_data = disk_pos['sr2_redis_data']
+        sr2_flash_db_path = disk_pos['sr2_flash_db_path']
         target = [
             sr2_flash_db_path,
             '{}/appendonly-{}*.aof'.format(sr2_redis_data, port),
             '{}/dump-{}.rdb'.format(sr2_redis_data, port),
         ]
         command = 'rm -rf {}'.format(' '.join(target))
-        ssh_execute(client, command)
+        net.ssh_execute(client, command)
 
-    def remove_data(self):
+    def remove_data(self, master=True, slave=True):
         msg = [
             'Removing flash db directory, ',
             'appendonly and dump.rdb files in master',
         ]
         logger.info(''.join(msg))
-        for host in self.master_host_list:
-            logger.info(' - {}'.format(host))
-            client = get_ssh(host)
-            for port in self.master_port_list:
-                self._remove_data(client, port)
-            client.close()
-        if self.slave_host_list:
+        if master:
+            for host in self.master_host_list:
+                logger.info(' - {}'.format(host))
+                client = net.get_ssh(host)
+                for port in self.master_port_list:
+                    self._remove_data(client, port)
+                client.close()
+        if slave and self.slave_host_list:
             msg = [
                 'Removing flash db directory, ',
                 'appendonly and dump.rdb files in slave',
             ]
             logger.info(''.join(msg))
-        for host in self.slave_host_list:
-            logger.info(' - {}'.format(host))
-            client = get_ssh(host)
-            for port in self.slave_port_list:
-                self._remove_data(client, port)
-            client.close()
+            for host in self.slave_host_list:
+                logger.info(' - {}'.format(host))
+                client = net.get_ssh(host)
+                for port in self.slave_port_list:
+                    self._remove_data(client, port)
+                client.close()
 
     def update_ip_port(self):
         logger.debug('update ip port')
@@ -599,9 +609,9 @@ class Center(object):
         sr2_redis_lib = path_of_fb['sr2_redis_lib']
 
         # create log directory
-        client = get_ssh(host)
+        client = net.get_ssh(host)
         command = 'mkdir -p {}'.format(sr2_redis_log)
-        ssh_execute(client, command)
+        net.ssh_execute(client, command)
 
         # redis-server run command
         redis_run_cmd = ['GLOBIGNORE=*;']
@@ -620,17 +630,18 @@ class Center(object):
             if not net.is_exist(client, conf_path):
                 raise FileNotExistError(conf_path, host=host)
             cmd = '{env}; {redis_server} {conf} >> {log_path} 2>&1 &'.format(
-                env=make_export_envs(host, port),
+                env=utils.make_export_envs(host, port),
                 redis_server=' '.join(redis_run_cmd),
                 conf=conf_path,
-                log_path=path_join(sr2_redis_log, log_file_name),
+                log_path=os.path.join(sr2_redis_log, log_file_name),
             )
-            ssh_execute(client, cmd)
+            net.ssh_execute(client, cmd)
 
     def ensure_cluster_exist(self):
         logger.debug('ensure_cluster_exist')
         logger.info('Check cluster exist...')
-        for host in self.all_host_list:
+        hosts = self.all_host_list
+        for host in hosts:
             logger.info(' - {}'.format(host))
             deploy_state = DeployUtil().get_state(self.cluster_id, host)
             if deploy_state != DEPLOYED:
@@ -659,31 +670,30 @@ class Center(object):
         return d
 
     def _get_master_slave_pair_list(self):
-        pl = []
-        master_count = len(self.master_port_list)
-        slave_count = len(self.slave_port_list)
-        logger.info('replicas: %.2f' % (float(slave_count) / master_count))
-        ss = list(self.slave_port_list)
-        while len(ss) > 0:
-            for master_port in self.master_port_list:
-                if len(ss) == 0:
-                    break
-                slave_port = ss.pop(0)
-                pl.append((master_port, slave_port))
+        m_count = len(self.master_host_list)
+        m_port_count = len(self.master_port_list)
         ret = []
-        m_ip_list = list(map(net.get_ip, self.master_host_list))
-        for ip in m_ip_list:
-            for master_port, slave_port in pl:
-                ret.append((ip, master_port, ip, slave_port))
+        for i, m_host in enumerate(self.master_host_list):
+            for j, s_port in enumerate(self.slave_port_list):
+                master_port_idx = j % m_port_count
+                slave_host_idx = (i + 1 + j // m_port_count) % m_count
+                ret.append([
+                    m_host,  # master host
+                    self.master_port_list[master_port_idx],  # master port
+                    self.slave_host_list[slave_host_idx],  # slave host
+                    s_port  # slave port
+                ])
         return ret
 
     @staticmethod
     def _replicate_thread(m_ip, m_port, s_ip, s_port):
         logger.info('replicate [M] %s %s - [S] %s %s' % (
             m_ip, m_port, s_ip, s_port))
+        m_ip = net.get_ip(m_ip)
+        s_ip = net.get_ip(s_ip)
         trib.replicate(m_ip, m_port, s_ip, s_port)
 
-    def _replicate(self):
+    def replicate(self):
         threads = []
         pair_list = self._get_master_slave_pair_list()
         for m_ip, m_port, s_ip, s_port in pair_list:

@@ -1,13 +1,9 @@
 from __future__ import print_function
+from __future__ import absolute_import
 
-import hashlib
-import json
-import sys
-from os.path import join as path_join
 import os
-from time import gmtime, strftime
+import time
 import shutil
-import yaml
 import socket
 
 import click
@@ -20,32 +16,25 @@ from prompt_toolkit.history import FileHistory
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers.sql import SqlLexer
 import paramiko
+import yaml
 
-import utils
-from cli import Cli
-from cluster import Cluster
-from config import (
-    get_cur_cluster_id,
-    get_env_dict,
-    get_node_ip_list,
-    get_root_of_cli_config
-)
-import config
-from deploy_util import DeployUtil, DEPLOYED, PENDING, CLEAN
-from log import logger
-import log
-from net import get_ssh, ssh_execute_async, ssh_execute, get_sftp, is_exist
-import net
-from prompt import get_cli_prompt
-from sql import FbSql, fbsql
-from thriftserver import ThriftServer
-from utils import CommandError, TableReport, clear_screen, style
-from center import Center
-import color
-import ask_util
-import cluster_util
-import editor
-from exceptions import (
+from fbctl import log
+from fbctl import net
+from fbctl import config
+from fbctl import utils
+from fbctl import prompt
+from fbctl import color
+from fbctl import ask_util
+from fbctl import cluster_util
+from fbctl import editor
+from fbctl.log import logger
+from fbctl.cli import Cli
+from fbctl.cluster import Cluster
+from fbctl.center import Center
+from fbctl.conf import Conf
+from fbctl.thriftserver import ThriftServer
+from fbctl.deploy_util import DeployUtil, DEPLOYED, PENDING
+from fbctl.exceptions import (
     SSHConnectionError,
     HostConnectionError,
     HostNameError,
@@ -59,12 +48,9 @@ from exceptions import (
     ClusterRedisError,
     FlashbaseError,
     SSHCommandError,
+    FbctlBaseError,
 )
 
-
-fb_completer = WordCompleter([
-    'thriftserver', 'deploy', 'flashbase', 'fb', 'restart', 'start', 'stop'],
-    ignore_case=True)
 
 user_info = {
     'user': None,
@@ -72,7 +58,7 @@ user_info = {
 }
 
 
-def run_monitor():
+def run_monitor(n=10):
     """Run monitor command
 
     Monitor remote logs
@@ -81,18 +67,18 @@ def run_monitor():
     cluster_id = config.get_cur_cluster_id()
     target_host = ask_util.host_for_monitor(host_list)
     logger.info('Press Ctrl-C for exit.')
-    client = get_ssh(target_host)
+    client = net.get_ssh(target_host)
     path_of_fb = config.get_path_of_fb(cluster_id)
     sr2_redis_log = path_of_fb['sr2_redis_log']
-    command = 'tail -f {}/servers*'.format(sr2_redis_log)
-    ssh_execute_async(client, command)
+    command = 'tail -F -n {} {}/servers*'.format(n, sr2_redis_log)
+    net.ssh_execute_async(client, command)
 
 
 # def run_deploy_v3(cluster_id=None, history_save=True, force=False):
 def run_deploy(cluster_id=None, history_save=True):
     # validate cluster id
     if cluster_id is None:
-        cluster_id = get_cur_cluster_id(allow_empty_id=True)
+        cluster_id = config.get_cur_cluster_id(allow_empty_id=True)
         if cluster_id < 0:
             msg = 'Select cluster first or type cluster id with argument'
             logger.error(msg)
@@ -128,7 +114,7 @@ def _deploy(cluster_id, history_save):
             return
 
     restore_yes = None
-    current_time = strftime("%Y%m%d%H%M%S", gmtime())
+    current_time = time.strftime("%Y%m%d%H%M%S", time.gmtime())
     cluster_backup_dir = 'cluster_{}_bak_{}'.format(cluster_id, current_time)
     conf_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, current_time)
     tmp_backup_dir = 'cluster_{}_conf_bak_{}'.format(cluster_id, 'tmp')
@@ -139,7 +125,7 @@ def _deploy(cluster_id, history_save):
     cluster_path = path_of_fb['cluster_path']
     path_of_cli = config.get_path_of_cli(cluster_id)
     conf_backup_path = path_of_cli['conf_backup_path']
-    tmp_backup_path = path_join(conf_backup_path, tmp_backup_dir)
+    tmp_backup_path = os.path.join(conf_backup_path, tmp_backup_dir)
     local_ip = config.get_local_ip()
 
     # ask installer
@@ -166,11 +152,12 @@ def _deploy(cluster_id, history_save):
                     shutil.rmtree(tmp_backup_path)
             if not os.path.exists(tmp_backup_path):
                 shutil.copytree(conf_path, tmp_backup_path)
-            tmp_props_path = path_join(tmp_backup_path, 'redis.properties')
+            tmp_props_path = os.path.join(tmp_backup_path, 'redis.properties')
             editor.edit(tmp_props_path, syntax='sh')
             meta += DeployUtil().get_meta_from_props(tmp_props_path)
             hosts = config.get_props(tmp_props_path, 'sr2_redis_master_hosts')
     else:
+        # new deploy
         props_dict = ask_util.props(cluster_id, save=history_save)
         hosts = props_dict['hosts']
         meta += DeployUtil().get_meta_from_dict(props_dict)
@@ -199,9 +186,9 @@ def _deploy(cluster_id, history_save):
     # if pending, delete legacy on each hosts
     for host in hosts:
         if DeployUtil().get_state(cluster_id, host) == PENDING:
-            client = get_ssh(host)
+            client = net.get_ssh(host)
             command = 'rm -rf {}'.format(cluster_path)
-            ssh_execute(client=client, command=command)
+            net.ssh_execute(client=client, command=command)
             client.close()
 
     # added_hosts = post_hosts - pre_hosts
@@ -213,7 +200,7 @@ def _deploy(cluster_id, history_save):
         added_hosts -= set(pre_hosts)
     can_deploy = True
     for host in added_hosts:
-        client = get_ssh(host)
+        client = net.get_ssh(host)
         if net.is_exist(client, cluster_path):
             meta.append([host, color.red('CLUSTER EXIST')])
             can_deploy = False
@@ -241,7 +228,7 @@ def _deploy(cluster_id, history_save):
     #     backup_hosts += added_hosts
     for host in backup_hosts:
         cluster_path = path_of_fb['cluster_path']
-        client = get_ssh(host)
+        client = net.get_ssh(host)
         Center().cluster_backup(host, cluster_id, cluster_backup_dir)
         client.close()
 
@@ -249,9 +236,9 @@ def _deploy(cluster_id, history_save):
     logger.info('Transfer installer and execute...')
     for host in hosts:
         logger.info(' - {}'.format(host))
-        client = get_ssh(host)
+        client = net.get_ssh(host)
         cmd = 'mkdir -p {0} && touch {0}/.deploy.state'.format(cluster_path)
-        ssh_execute(client=client, command=cmd)
+        net.ssh_execute(client=client, command=cmd)
         client.close()
         DeployUtil().transfer_installer(host, cluster_id, installer_path)
         try:
@@ -301,26 +288,26 @@ def _deploy(cluster_id, history_save):
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_disable(props_path, key)
-        config.set_props(props_path, key, props_dict['prefix_of_rdp'])
+        config.set_props(props_path, key, props_dict['prefix_of_db_path'])
 
         key = 'sr2_redis_db_path'
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_disable(props_path, key)
-        config.set_props(props_path, key, props_dict['prefix_of_rdbp'])
+        config.set_props(props_path, key, props_dict['prefix_of_db_path'])
 
         key = 'sr2_flash_db_path'
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_enable(props_path, key, v1_flg=True)
         config.make_key_disable(props_path, key)
-        config.set_props(props_path, key, props_dict['prefix_of_fdbp'])
+        config.set_props(props_path, key, props_dict['prefix_of_db_path'])
 
     # synk props
     logger.info('Sync conf...')
     for node in hosts:
         if socket.gethostbyname(node) in config.get_local_ip_list():
             continue
-        client = get_ssh(node)
+        client = net.get_ssh(node)
         if not client:
             logger.error("ssh connection fail: '{}'".format(node))
             return
@@ -331,23 +318,15 @@ def _deploy(cluster_id, history_save):
     if os.path.exists(tmp_backup_path):
         shutil.rmtree(tmp_backup_path)
     for node in hosts:
-        home_path = net.get_home_path(node)
-        if not home_path:
-            return
         path_of_fb = config.get_path_of_fb(cluster_id)
         cluster_path = path_of_fb['cluster_path']
-        client = get_ssh(node)
-        command = 'rm -rf {}'.format(path_join(cluster_path, '.deploy.state'))
-        ssh_execute(client=client, command=command)
+        client = net.get_ssh(node)
+        command = 'rm -rf {}'.format(os.path.join(cluster_path, '.deploy.state'))
+        net.ssh_execute(client=client, command=command)
         client.close()
 
     logger.info('Complete to deploy cluster {}.'.format(cluster_id))
     Cluster().use(cluster_id)
-
-
-def run_fbsql():
-    user = user_info['user']
-    fbsql(user)
 
 
 def run_cluster_use(cluster_id):
@@ -375,14 +354,14 @@ def run_import_conf():
         conf['slave_ports']['enabled'] = bool(slave_enabled)
         conf['ssd']['count'] = int(ssd_count)
 
-        root_of_cli_config = get_root_of_cli_config()
-        cluster_base_path = path_join(root_of_cli_config, 'clusters')
+        root_of_cli_config = config.get_root_of_cli_config()
+        cluster_base_path = os.path.join(root_of_cli_config, 'clusters')
         if not os.path.isdir(cluster_base_path):
             os.mkdir(cluster_base_path)
-        cluster_path = path_join(root_of_cli_config, 'clusters', cluster_id)
+        cluster_path = os.path.join(root_of_cli_config, 'clusters', cluster_id)
         if not os.path.isdir(cluster_path):
             os.mkdir(cluster_path)
-        yaml_path = path_join(cluster_path, 'config.yaml')
+        yaml_path = os.path.join(cluster_path, 'config.yaml')
         with open(yaml_path, 'w') as fd:
             yaml.dump(conf, fd, default_flow_style=False)
 
@@ -428,7 +407,7 @@ def run_import_conf():
         return cluster_ids
 
     cluster_ids = _get_cluster_ids_from_fb()
-    root_of_cli_config = get_root_of_cli_config()
+    root_of_cli_config = config.get_root_of_cli_config()
 
     rp_exists = []
     rp_not_exists = []
@@ -437,11 +416,10 @@ def run_import_conf():
     for cluster_id in cluster_ids:
         path_of_fb = config.get_path_of_fb(cluster_id)
         rp = path_of_fb['redis_properties']
-        dest_path = path_join(root_of_cli_config, 'clusters', cluster_id)
-        dest_path = path_join(dest_path, 'config.yaml')
+        dest_path = os.path.join(root_of_cli_config, 'clusters', cluster_id)
+        dest_path = os.path.join(dest_path, 'config.yaml')
         cluster_path = path_of_fb['cluster_path']
-        deploy_state = path_join(cluster_path, '.deploy.state')
-        pending = DeployUtil().is_pending(cluster_id)
+        deploy_state = os.path.join(cluster_path, '.deploy.state')
         if os.path.exists(dest_path):
             dest_folder_exists.append(cluster_id)
             meta.append([cluster_id, 'SKIP(dest_exist)'])
@@ -454,7 +432,7 @@ def run_import_conf():
 
     logger.info('Diff fb and cli conf folders.')
     utils.print_table(meta)
-    if len(rp_exists) == 0:
+    if rp_exists:
         return
     import_yes = ask_util.askBool('Do you want to import conf?', ['y', 'n'])
     if not import_yes:
@@ -467,7 +445,7 @@ def run_delete():
     cluster = Cluster()
     cluster.update_ip_port()
     cluster.stop(force=True)
-    cluster.clean(reset=True)
+    cluster.clean()
 
     cluster_id = config.get_cur_cluster_id()
     cli_cluster_path = config.get_path_of_cli(cluster_id)["cluster_path"]
@@ -479,18 +457,18 @@ def run_delete():
     key = 'sr2_redis_master_hosts'
     nodes = config.get_props(props_path, key, [])
     for node in nodes:
-        client = get_ssh(node)
+        client = net.get_ssh(node)
         cmd = [
             'rm -rf {};'.format(fb_cluster_path),
             'rm -rf {}'.format(cli_cluster_path),
         ]
-        ssh_execute(client=client, command=' '.join(cmd))
+        net.ssh_execute(client=client, command=' '.join(cmd))
         client.close()
     cluster.use(-1)
 
 
 def run_edit():
-    p = path_join(config.get_root_of_cli_config(), 'config')
+    p = os.path.join(config.get_root_of_cli_config(), 'config')
     editor.edit(p, syntax='yaml')
 
 
@@ -503,6 +481,7 @@ for automatically generating CLIs
     - c: change cluster #
     - cluster: trib.rb cluster wrapper
     - cli: redis-cli command wrapper
+    - conf: edit conf file
     - monitor: monitor logs
     - sql: enter sql mode
     - thriftserver: edit, start, stop thriftserver
@@ -512,24 +491,27 @@ for automatically generating CLIs
     def __init__(self):
         """Member variables will be cli
         """
+        # pylint: disable=invalid-name
+        # cli command naming is not have to follow snake_caes
         self.deploy = run_deploy
         self.monitor = run_monitor
         self.cluster = Cluster()
-        self.thriftserver = ThriftServer()
         self.ll = log.set_level
         self.cli = Cli()
         self.import_conf = run_import_conf
-        self.sql = run_fbsql
         self.c = run_cluster_use
         self.edit = run_edit
         self.delete = run_delete
+        self.conf = Conf()
+        self.ths = ThriftServer()
+        self.thriftserver = ThriftServer()
 
 
 def _handle(text):
     if text == '':
         return
     if text == 'clear':
-        clear_screen()
+        utils.clear_screen()
         return
     text = text.replace('-- --help', '?')
     text = text.replace('--help', '?')
@@ -552,7 +534,7 @@ def _handle(text):
             logger.exception(ex)
     except EOFError:
         logger.warning('\b\bCanceled')
-    except CommandError as ex:
+    except utils.CommandError as ex:
         logger.exception(ex)
     except FireExit as ex:
         pass
@@ -569,6 +551,7 @@ def _handle(text):
             ClusterRedisError,
             ClusterNotExistError,
             ClusterIdError,
+            FbctlBaseError,
     ) as ex:
         logger.error('{}: {}'.format(ex.class_name(), str(ex)))
     except FlashbaseError as ex:
@@ -577,55 +560,10 @@ def _handle(text):
         logger.exception(ex)
 
 
-def run_test():
-    import center
-    ip = '127.0.0.1'
-    port = 18001
-    center.Infra().update_redis_conf(ip, port)
-
-
-def _is_auth_ok(user, password):
-    # if user == 'root':
-    #     logger.info('You are root user.')
-    if password:
-        password = hashlib.md5(password)
-        password = password.hexdigest()
-    utils.ensure_auth_data()
-    meta = json.loads(utils.get_meta_data('auth'))
-    if user not in meta:
-        logger.info('"%s" is not exist' % user)
-        return False
-    else:
-        value = meta[user]
-        if 'password' in value:
-            if not password:
-                password = hashlib.md5(askPassword('Password?'))
-                password = password.hexdigest()
-            if password == value['password']:
-                return True
-            else:
-                return False
-        elif 'password' not in value:
-            return True
-        else:
-            return False
-
-
-def _handle_file(user, file_name, cluster_id):
-    if int(cluster_id) == 0:
-        logger.info('You can not use cluster 0 for sql')
-        exit(1)
-    with open(file_name, 'r') as fd:
-        all_text = fd.read()
-        lines = all_text.split(';')
-        for line in lines:
-            print_mode = user_info['print_mode']
-            FbSql(user=user, print_mode=print_mode).handle(text=line)
-
-
 def _initial_check():
     try:
-        client = get_ssh('localhost')
+        # Simple check to see if ssh access to localhost is possible
+        net.get_ssh('localhost')
     except paramiko.ssh_exception.SSHException:
         logger.error('Need to ssh-keygen for localhost')
         exit(1)
@@ -636,7 +574,7 @@ def _initial_check():
         pass
     except TypeError:
         root_of_cli_config = config.get_root_of_cli_config()
-        conf_path = path_join(root_of_cli_config, 'config')
+        conf_path = os.path.join(root_of_cli_config, 'config')
         os.system('rm {}'.format(conf_path))
         base_directory = None
     if not base_directory or not base_directory.startswith(('~', '/')):
@@ -649,8 +587,8 @@ def _initial_check():
 def _validate_cluster_id(cluster_id):
     try:
         if cluster_id is None:
-            cluster_id = get_cur_cluster_id(allow_empty_id=True)
-        elif not cluster_id.isdecimal():
+            cluster_id = config.get_cur_cluster_id(allow_empty_id=True)
+        elif not utils.is_number(cluster_id):
             raise ClusterIdError(cluster_id)
         cluster_id = int(cluster_id)
         run_cluster_use(cluster_id)
@@ -664,39 +602,26 @@ def _validate_cluster_id(cluster_id):
 
 @click.command()
 @click.option('-c', '--cluster_id', default=None, help='ClusterId.')
-@click.option('-f', '--file', default=None, help='File.')
 @click.option('-d', '--debug', default=False, help='Debug.')
-def main(cluster_id, file, debug):
+def main(cluster_id, debug):
     _initial_check()
     if debug:
         log.set_mode('debug')
 
-    if file:
-        user_info['print_mode'] = 'file'
     logger.debug('Start fbcli')
 
     cluster_id = _validate_cluster_id(cluster_id)
 
-    if 'test' in sys.argv:
-        run_test()
-        exit(0)
-
-    if file:
-        user = os.environ['USER']
-        _handle_file(user, file, cluster_id)
-        exit(0)
-
-    history = path_join(get_root_of_cli_config(), 'cli_history')
+    history = os.path.join(config.get_root_of_cli_config(), 'cli_history')
     session = PromptSession(
         lexer=PygmentsLexer(SqlLexer),
-        completer=fb_completer,
         history=FileHistory(history),
         auto_suggest=AutoSuggestFromHistory(),
-        style=style)
+        style=utils.style)
     while True:
         try:
-            p = get_cli_prompt()
-            text = session.prompt(p, style=style)
+            p = prompt.get_cli_prompt()
+            text = session.prompt(p, style=utils.style)
             if text == "exit":
                 break
             if 'fbcli' in text:
@@ -711,4 +636,6 @@ def main(cluster_id, file, debug):
 
 
 if __name__ == '__main__':
+    # pylint: disable=no-value-for-parameter
+    # Parameter used by Click
     main()

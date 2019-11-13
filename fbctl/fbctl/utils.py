@@ -1,18 +1,13 @@
-#!/usr/bin/python
-# -*- coding: UTF-8 -*-
-import json
 import os
 import sys
-from os.path import join as path_join
 
 from prompt_toolkit.styles import Style
-from rediscluster import StrictRedisCluster
 from terminaltables import AsciiTable
 
-import config
-import editor
-from log import logger
-from exceptions import ConvertError
+from fbctl import config
+from fbctl import editor
+from fbctl.log import logger
+from fbctl.exceptions import ConvertError
 
 
 class TermColor:
@@ -103,14 +98,13 @@ class CommandError(Error):
         self.command = command
         self.hostname = hostname
         self.port = port
-        logger.error('''CommandError: 
-exit_status="{exit_status}"
-command="{command}"
-host:port="{hostname}:{port}"'''.format(
-            exit_status=exit_status,
-            command=command,
-            hostname=hostname,
-            port=port))
+        msg = [
+            'CommandError:',
+            'exit_status={}'.format(exit_status),
+            'command={}'.format(command),
+            'host:port={}:{}'.format(hostname, port)
+        ]
+        logger.error('\n'.join(msg))
 
 
 # table print
@@ -187,62 +181,6 @@ style = Style.from_dict({
 })
 
 
-def create_cluster_connection_0():
-    """Create cluster 0 for metadata db
-
-    :return: redis cluster instance
-    """
-    cluster_id = 0
-    ip_list = config.get_node_ip_list(cluster_id)
-    port_list = config.get_master_port_list(cluster_id)
-    startup_nodes = get_ip_port_dict_list(ip_list, port_list)
-    rc = StrictRedisCluster(startup_nodes=startup_nodes,
-                            decode_responses=True)
-    return rc
-
-
-def get_meta_data(key):
-    """Get meta data from cluster 0
-
-    :param key: key
-    :return: metadata (string format)
-    """
-    rc = create_cluster_connection_0()
-    return rc.get(key)
-
-
-def get_meta_data_after_ensure(key, default_value={}):
-    """Get meta data after ensure from cluster 0
-
-    :param key: key
-    :param default_value: default value (dict)
-    :return: metadata (string format)
-    """
-    md = get_meta_data(key)
-    if not md:
-        rc = create_cluster_connection_0()
-        rc.set(key, json.dumps(default_value))
-        return get_meta_data(key)
-    return md
-
-
-def set_meta_data(key, value):
-    """Set meta data to cluster 0
-
-    :param key: key
-    :param value: value
-    """
-    rc = create_cluster_connection_0()
-    return rc.set(key, json.dumps(value))
-
-
-def ensure_auth_data():
-    """Ensure auth data
-    """
-    key = 'auth'
-    return get_meta_data_after_ensure(key, {'root': {}})
-
-
 def get_full_path_of_props(cluster_id=-1, target='config'):
     """Get full path of props
 
@@ -259,7 +197,7 @@ def get_full_path_of_props(cluster_id=-1, target='config'):
     }
     home = config.get_repo_cluster_path(cluster_id)
     f = targets[target]
-    full_path = path_join(home, f)
+    full_path = os.path.join(home, f)
     return full_path
 
 
@@ -270,13 +208,6 @@ def open_vim_editor(target='config'):
     cluster_id = config.get_cur_cluster_id()
     full_path = get_full_path_of_props(cluster_id, target)
     editor.edit(full_path)
-
-
-def clear_meta(key, value):
-    """Clear meta
-    """
-    rc = create_cluster_connection_0()
-    return rc.set(key, json.dumps(value))
 
 
 def make_export_envs(ip, port):
@@ -326,3 +257,11 @@ def convert_list_2_hyphen(ports):
         return ret
     except Exception:
         raise ConvertError("Invalid ports: '{}'".format(ports))
+
+
+def is_number(target):
+    try:
+        target = target.decode('utf-8')
+    except AttributeError:
+        pass
+    return target.isdecimal()

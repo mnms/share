@@ -1,24 +1,16 @@
 import os
 import shutil
-from os.path import join as path_join
-
-import yaml
-from ask import ask, askInt
-
-import config
-from center import Center
-from config import get_config, get_root_of_cli_config
-from deploy_util import DeployUtil
-from log import logger
-from net import get_ssh, ssh_execute
-from rediscli_util import RedisCliUtil
-from redistrib2.custom_trib import rebalance_cluster_cmd
-from utils import DuplicatedError, open_vim_editor
-import cluster_util
-import ask_util
-import editor
 from functools import reduce
-from exceptions import (
+
+from fbctl import config
+from fbctl import cluster_util
+from fbctl import ask_util
+from fbctl import editor
+from fbctl.center import Center
+from fbctl.log import logger
+from fbctl.rediscli_util import RedisCliUtil
+from fbctl.redistrib2.custom_trib import rebalance_cluster_cmd
+from fbctl.exceptions import (
     ClusterIdError,
     ClusterNotExistError,
     FlashbaseError,
@@ -29,8 +21,8 @@ from exceptions import (
 def _change_cluster(cluster_id):
     if not isinstance(cluster_id, int):
         raise ClusterIdError(cluster_id)
-    root_of_cli_config = get_root_of_cli_config()
-    head_path = path_join(root_of_cli_config, 'HEAD')
+    root_of_cli_config = config.get_root_of_cli_config()
+    head_path = os.path.join(root_of_cli_config, 'HEAD')
     cluster_list = cluster_util.get_cluster_list()
     if cluster_id not in cluster_list + [-1]:
         raise ClusterNotExistError(cluster_id)
@@ -81,7 +73,7 @@ class Cluster(object):
         slave_alive_count = center.get_alive_slave_redis_count()
         if slave_alive_count > 0:
             msg = [
-                'Fail to start master nodes... ',
+                'Fail to start slave nodes... ',
                 'Must be checked running master processes!\n',
                 'We estimate that ',
                 "redis 'SLAVE' processes is {}".format(slave_alive_count)
@@ -89,12 +81,12 @@ class Cluster(object):
             raise FlashbaseError(12, ''.join(msg))
         center.backup_server_logs()
         center.create_redis_data_directory()
-        try:
-            center.start_redis_process(profile)
-        except FileNotExistError as ex:
-            logger.error(ex)
-            logger.error("Recommendation Command: 'cluster configure'")
-            return
+
+        # equal to cluster.configure()
+        center.configure_redis()
+        center.sync_conf(show_result=True)
+
+        center.start_redis_process(profile)
         center.wait_until_all_redis_process_up()
 
     def create(self, yes=False):
@@ -109,20 +101,11 @@ class Cluster(object):
             return
         center.create_cluster(yes)
 
-    def clean(self, logs=False, nodes=False, all=False, reset=False):
+    def clean(self, logs=False):
         """Clean cluster
         """
         if not isinstance(logs, bool):
             logger.error("option '--logs' can use only 'True' or 'False'")
-            return
-        if not isinstance(nodes, bool):
-            logger.error("option '--nodes' can use only 'True' or 'False'")
-            return
-        if not isinstance(all, bool):
-            logger.error("option '--all' can use only 'True' or 'False'")
-            return
-        if not isinstance(reset, bool):
-            logger.error("option '--reset' can use only 'True' or 'False'")
             return
         center = Center()
         center.update_ip_port()
@@ -131,8 +114,7 @@ class Cluster(object):
             return
         center.remove_generated_config()
         center.remove_data()
-        if nodes or all or reset:
-            center.remove_nodes_conf()
+        center.remove_nodes_conf()
 
     def use(self, cluster_id):
         """Change selected cluster
@@ -187,69 +169,10 @@ class Cluster(object):
             return
         center.stop_redis(force=force_stop)
         if reset:
-            center.remove_generated_config()
-            center.remove_data()
-            center.remove_nodes_conf()
-            center.configure_redis()
-        self.start()
+            self.clean()
+        self.start(profile=profile)
         if cluster:
             self.create(yes=yes)
-
-    def edit(self, target='main', master=False, slave=False):
-        """Open vim to edit config file"""
-        cluster_id = config.get_cur_cluster_id()
-        path_of_fb = config.get_path_of_fb(cluster_id)
-        allow_target = ['main', 'template', 'thrift']
-        if target not in allow_target:
-            logger.error('Allow target is {}'.format(allow_target))
-            return
-        if target == 'template':
-            if not (master or slave):
-                msg = [
-                    'Select type of template.',
-                    "you can use option '--master' or '--slave'"
-                ]
-                logger.error(' '.join(msg))
-                return
-            if master and slave:
-                logger.error('Select only one type.')
-                return
-            if master:
-                target_path = path_of_fb['master_template']
-            if slave:
-                target_path = path_of_fb['slave_template']
-        if target != 'template':
-            if master:
-                logger.error("'--master' can use only edit template")
-                return
-            if slave:
-                logger.error("'--slave' can use only edit template")
-                return
-        if target == 'main':
-            target_path = path_of_fb['redis_properties']
-        if target == 'thrift':
-            target_path = path_of_fb['thrift_properties']
-        target_tmp_path = target_path + '.tmp'
-        if os.path.exists(target_tmp_path):
-            q = 'There is a history of modification. Do you want to load?'
-            yes = ask_util.askBool(q)
-            if not yes:
-                os.remove(target_tmp_path)
-        if not os.path.exists(target_tmp_path):
-            shutil.copy(target_path, target_tmp_path)
-        editor.edit(target_tmp_path, syntax='sh')
-        if target == 'main':
-            config.ensure_host_not_changed(target_tmp_path)
-        shutil.copy(target_tmp_path, target_path)
-        os.remove(target_tmp_path)
-        center = Center()
-        center.update_ip_port()
-        success = center.check_hosts_connection()
-        if not success:
-            return
-        success = center.sync_conf()
-        if success:
-            logger.info('Complete edit')
 
     def configure(self):
         center = Center()
@@ -267,7 +190,7 @@ class Cluster(object):
         # ' '{print $4}' | awk -F '=' '{sum += $2} END {print sum}'
         host_list = config.get_master_host_list()
         port_list = config.get_master_port_list()
-        outs, meta = RedisCliUtil.command_raw_all(
+        outs, _ = RedisCliUtil.command_raw_all(
             'info Tablespace', host_list, port_list)
         lines = outs.splitlines()
         key = 'totalRows'
@@ -284,6 +207,43 @@ class Cluster(object):
         :param port: rebalance target port
         """
         rebalance_cluster_cmd(ip, port)
+
+    def add_slave(self):
+        """Add slaves to cluster additionally
+        """
+        logger.debug('add_slave')
+        center = Center()
+        center.update_ip_port()
+        # check
+        slave_host_list = config.get_slave_host_list()
+        success = center.check_hosts_connection(hosts=slave_host_list)
+        if not success:
+            return
+        center.ensure_cluster_exist()
+        slave_alive_count = center.get_alive_slave_redis_count()
+        if slave_alive_count > 0:
+            msg = [
+                'Fail to start slave nodes... ',
+                'Must be checked running master processes!\n',
+                'We estimate that ',
+                "redis 'SLAVE' processes is {}".format(slave_alive_count)
+            ]
+            raise FlashbaseError(12, ''.join(msg))
+        # clean
+        center.remove_generated_config(master=False)
+        center.remove_data(master=False)
+        center.remove_nodes_conf(master=False)
+        # backup logs
+        center.backup_server_logs(master=False)
+        center.create_redis_data_directory(master=False)
+        # configure
+        center.configure_redis(master=False)
+        center.sync_conf(show_result=True)
+        # start
+        center.start_redis_process(master=False)
+        center.wait_until_all_redis_process_up()
+        # create
+        center.replicate()
 
     def _print(self, text):
         if self._print_mode == 'screen':

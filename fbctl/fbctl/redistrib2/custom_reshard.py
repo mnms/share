@@ -100,7 +100,7 @@ class CustomReshard(object):
                 tmp = filter(
                     lambda x: self.dest_node_id != x.info['name'],
                     self.trib.master_nodes)
-                self.src_node_ids = map(lambda x: x.info['name'], tmp)
+                self.src_node_ids = list(map(lambda x: x.info['name'], tmp))
                 return
             elif candidate == 'done':
                 return

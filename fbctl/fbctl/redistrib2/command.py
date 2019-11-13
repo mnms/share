@@ -7,9 +7,14 @@ import sys
 from retrying import retry
 from six.moves import range
 
+from fbctl.log import logger
 from .clusternode import ClusterNode, base_balance_plan
-from .connection import (CMD_CLUSTER_INFO, CMD_CLUSTER_NODES, CMD_INFO,
-                         Connection)
+from .connection import (
+    CMD_CLUSTER_INFO,
+    CMD_CLUSTER_NODES,
+    CMD_INFO,
+    Connection
+)
 
 SLOT_COUNT = 16384
 PAT_CLUSTER_ENABLED = re.compile('cluster_enabled:([01])')
@@ -94,24 +99,37 @@ def create(host_port_list, max_slots=1024):
             _ensure_cluster_status_unset(t)
             logging.info('Instance at %s:%d checked', t.host, t.port)
 
+        logger.info('Cluster meet...')
+        logger.info(' - {}:{}'.format(conns[0].host, conns[0].port))
         first_conn = conns[0]
         for i, t in enumerate(conns[1:]):
+            logger.info(' - {}:{}'.format(t.host, t.port))
             t.execute('cluster', 'meet', first_conn.host, first_conn.port)
 
         slots_each = SLOT_COUNT // len(conns)
         slots_residue = SLOT_COUNT - slots_each * len(conns)
         first_node_slots = slots_residue + slots_each
 
+        logger.info('Adding slots...')
+        logger.info(' - {}:{}, {}'.format(
+            first_conn.host,
+            first_conn.port,
+            slots_residue + slots_each,
+        ))
         _add_slots_range(first_conn, 0, first_node_slots, max_slots)
         logging.info('Add %d slots to %s:%d', slots_residue + slots_each,
                      first_conn.host, first_conn.port)
         for i, t in enumerate(conns[1:]):
+            msg = ' - {}:{}, {}'.format(t.host, t.port, slots_each)
+            logger.info(msg)
             _add_slots_range(t, i * slots_each + first_node_slots,
                              (i + 1) * slots_each + first_node_slots,
                              max_slots)
             logging.info('Add %d slots to %s:%d', slots_each, t.host, t.port)
+        logger.info('Check cluster state and asign slot...')
         for t in conns:
             _poll_check_status(t)
+        logger.info('Ok')
     finally:
         for t in conns:
             t.close()
